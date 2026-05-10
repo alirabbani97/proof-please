@@ -6,13 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The repo has a buildable Next.js 16 frontend, an Anchor program drafted in Rust (not yet compiled because Rust/Anchor aren't installed), a smoke-test file, and a stubbed AI scorer route. Nothing is deployed yet. `pnpm build` is green.
 
-The spec was originally `paper please.odt`; the user converted it to **`paper please.docx`** at the project root. Convert before reading:
+Two spec files at the project root: **`paper_please_004.docx`** is the latest (added §4 Token Economic Model) and supersedes `paper please.docx`. Both are binary OOXML — convert before reading:
 
 ```bash
-libreoffice --headless --convert-to txt --outdir /tmp "paper please.docx"
+libreoffice --headless --convert-to txt --outdir /tmp "paper_please_004.docx"
 ```
 
-The spec is the source of truth for everything below; if this file and the spec disagree, the spec wins, except for the explicit "Locked implementation decisions" section that overrides it intentionally.
+§1–§3 are unchanged from v3; §4 is new and adds the economic-model rationale (no native token, two-layer SBT + SOL design, anti-speculation framing). The §4 anchors are mapped to specific code decisions in the "Why these decisions" subsection below.
+
+The spec is the source of truth for everything except the explicit "Locked implementation decisions" section, which overrides it intentionally.
 
 ### Pinned versions (already in lockfile)
 
@@ -58,6 +60,19 @@ The spec lists ideals; this section pins what the team is actually shipping. If 
 - **Oracle:** Single keypair stored as a Vercel secret (`ORACLE_KEYPAIR_JSON`). Pubkey written to program state via `initialize_oracle` once at deploy time. The "decentralized scorer" framing in the spec is aspirational; the README will be honest about this.
 - **Identity:** Wallet pubkey only. No DIDs.
 - **Repo layout:** Single Next.js app at the root with Anchor program in `programs/indie-pool/`. No separate `app/` directory.
+
+### Why these decisions (validated against v004 §4)
+
+The v004 spec's §4 "Token Economic Model" arrived after these decisions were locked. Reading it back, every technical choice traces to a specific §4 anchor — **don't unwind any of these without consulting §4 first**:
+
+- **Token-2022 NonTransferable mint** ← §4.2 Layer 1: *"Reputation is earned, not purchased… cannot be bought, sold, or transferred."* Soulbound semantics are load-bearing; a transferable token re-enables the plutocratic capture §4.3 explicitly designs against ("preventing whale capture").
+- **No native fungible token at MVP** ← §4.2 Layer 2: *"No native speculative token is required at this stage, reducing regulatory exposure and eliminating pump-and-dump risk."* Don't add one without reading §4.4.
+- **Score ≥ 60 threshold** ← §4.3: *"Contributors only receive SBTs and escrow payouts for verified, quality work (AI score ≥ 60)."* The threshold is referenced in `lib.rs` (`APPROVAL_THRESHOLD`), `app/api/score/route.ts`, and `lib/indie-pool/types.ts`. Don't drop it.
+- **AI scorer instead of committee voting** ← §4.6: *"AI scoring replaces committee governance for small teams, enabling fast iteration."* If a future PR adds DAO/voting infrastructure, that's reverting a deliberate design choice.
+- **Single global REP mint, balance = lifetime score** ← §4.2: *"cumulative scores build a cross-project reputation profile."* Per-project mints would break cross-project portability.
+- **Mocked escrow on /pool** ← §3.2 "Hour 40-46" allows it explicitly; §4.3 marks staking/governance as Phase 2 (deferred until proven escrow demand).
+
+If a future session is tempted to switch to Metaplex SBTs, add a fungible governance token, drop the score threshold, or replace the AI scorer with committee voting, **read v004 §4 first**. The decisions look arbitrary from code alone but are anchored to specific spec constraints.
 
 ## What this project is
 
@@ -124,7 +139,7 @@ Brutales XYZ visual identity, from spec §3.6. Part of the brief, not a suggesti
 - Backgrounds: `#0D0D1A` base, `#1A1A2E` cards
 - Accents: cyan `#00E5FF` (primary actions), purple `#7C3AED` (secondary)
 - Monospace for on-chain data (addresses, hashes, scores); sans-serif for UI prose
-- Wallet addresses always truncated as `0x1234...ABCD`
+- Wallet addresses always truncated head/tail with `…` separator (e.g. `FLEb…gnCd` for a Solana base58 pubkey). Spec v3 used a stale Ethereum-style `0x1234...ABCD` example; v004 corrected it to the base58 form. The `truncateKey()` helper in `components/truncate-key.tsx` already does this — never add a `0x` prefix.
 - Glitch CSS animations on loading states
 - "No clean corporate vibes" — community tool, decentralized, anti-corporate
 

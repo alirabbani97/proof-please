@@ -71,6 +71,55 @@ export default function Home() {
         </div>
       </section>
 
+      {/* The design — anchored to spec §4 (token economic model) */}
+      <section className="border-t border-white/5">
+        <div className="max-w-5xl mx-auto px-6 py-16 sm:py-20">
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-10 lg:gap-16 items-start">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.3em] text-rep-cyan mb-3">
+                the design
+              </p>
+              <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight leading-[1.15] mb-5">
+                Built against{" "}
+                <span className="text-rep-purple">2025&apos;s</span>
+                <br className="hidden sm:block" /> failure modes
+              </h2>
+              <p className="text-sm text-rep-muted leading-relaxed">
+                Over 90% of gaming token launches in 2025 lost their initial
+                value. Four design constraints — each chosen to dodge a
+                specific failure mode of speculative-token economies.
+              </p>
+            </div>
+            <ol className="space-y-7">
+              <Pillar
+                n="01"
+                accent="cyan"
+                title="No speculative token"
+                body="Anchored to SOL and Soulbound reputation, not a fungible vehicle. No fundraising round, no pump pressure, no regulatory exposure at MVP."
+              />
+              <Pillar
+                n="02"
+                accent="purple"
+                title="Reputation, not holdings"
+                body="REP tokens are earned via verified work, not purchased. One contributor, one voice — non-transferable by construction; whales can't buy in."
+              />
+              <Pillar
+                n="03"
+                accent="cyan"
+                title="Talent-first funding"
+                body="Creative work — code, art, music, 3D — becomes a verifiable on-chain asset. Indie studios fund contributors directly; no VCs, publishers, or gatekeepers."
+              />
+              <Pillar
+                n="04"
+                accent="purple"
+                title="AI replaces DAOs"
+                body="Small indie teams don't need committee governance. AI scoring gives them DAO-grade verification at the speed of solo development."
+              />
+            </ol>
+          </div>
+        </div>
+      </section>
+
       <footer className="px-6 py-6 text-center text-xs font-mono text-rep-muted border-t border-white/5">
         brutales xyz · without boundaries of any kind
       </footer>
@@ -89,5 +138,35 @@ function Step({ n, title, body }: { n: number; title: string; body: string }) {
       </div>
       <p className="text-sm text-rep-muted leading-relaxed">{body}</p>
     </div>
+  );
+}
+
+function Pillar({
+  n,
+  accent,
+  title,
+  body,
+}: {
+  n: string;
+  accent: "cyan" | "purple";
+  title: string;
+  body: string;
+}) {
+  const borderClass =
+    accent === "cyan" ? "border-rep-cyan/40" : "border-rep-purple/40";
+  const accentClass =
+    accent === "cyan" ? "text-rep-cyan" : "text-rep-purple";
+  return (
+    <li className={`pl-5 border-l-2 ${borderClass}`}>
+      <p className="flex items-baseline gap-3 mb-1.5">
+        <span
+          className={`font-mono text-[10px] uppercase tracking-[0.25em] ${accentClass} tabular-nums`}
+        >
+          {n}
+        </span>
+        <span className="font-medium">{title}</span>
+      </p>
+      <p className="text-sm text-rep-muted leading-relaxed">{body}</p>
+    </li>
   );
 }

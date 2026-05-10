@@ -187,14 +187,22 @@ export default function PoolPage() {
 
 function PreviewBanner() {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-rep-purple/30 bg-rep-purple/5">
-      <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-rep-purple shrink-0">
-        ui preview
-      </span>
-      <p className="text-xs text-rep-muted leading-snug">
-        Escrow logic is not yet on-chain in this MVP — the data on this page
-        is illustrative. The contribution → score → REP flow on the other
-        screens is real.
+    <div className="px-4 py-4 rounded-lg border border-rep-purple/30 bg-rep-purple/5 space-y-2">
+      <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-rep-purple">
+        layer 2 · escrow rewards
+      </p>
+      <p className="text-xs text-rep-muted leading-relaxed">
+        Project creators fund a Solana escrow PDA. The AI scorer&apos;s
+        verification of contribution milestones unlocks proportional SOL
+        payouts to verified contributors — milestone-gated, trustless,
+        auditable on-chain. Reputation (Layer 1) is earned via{" "}
+        <span className="text-rep-fg">non-transferable Soulbound Tokens</span>;
+        SOL (Layer 2) flows on top of that signal.
+      </p>
+      <p className="text-[11px] text-rep-muted/70 italic">
+        Data on this page is illustrative — escrow state plumbing lands
+        post-MVP. The contribution → score → REP flow on /submit and
+        /dashboard is real.
       </p>
     </div>
   );

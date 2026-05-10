@@ -113,6 +113,37 @@ Paste that into `.env.local` as `ORACLE_KEYPAIR_JSON`. Add `ANTHROPIC_API_KEY` (
 
 ---
 
+## Economic model
+
+Proof, please! is built on a deliberate two-layer separation that keeps reputation **non-financial** and rewards **stablecoin-denominated**. This is informed by the failure modes of 2025's gaming-token economy — over 90% of token launches that year lost their initial value. Each design decision below dodges a specific failure mode (full rationale in `paper_please_004.docx` §4).
+
+### Two layers
+
+| Layer | Asset | Transferable? | Purpose |
+|---|---|---|---|
+| **Layer 1 — Reputation** | REP (Token-2022, `NonTransferable`) | No (soulbound) | Verifiable creative identity & merit score; cumulative across projects |
+| **Layer 2 — Rewards** | SOL (in escrow PDA, milestone-gated) | Yes | Compensation for verified contributions; trustless on-chain release |
+| **Phase 2 — Governance** | TBD fungible token | Yes (with vesting) | Platform staking/governance; deferred until proven escrow demand |
+
+No native platform token launches at MVP. SOL serves as the liquid economic rail; REP serves as the non-financial signal.
+
+### Why no platform token (at MVP)
+
+Issuing a fungible token at MVP would expose us to the failure mode that killed 90% of 2025's gaming tokens: speculative dump pressure decoupled from product utility. Anchoring rewards to SOL and reputation to soulbound tokens produces the same incentive structure with none of the speculation risk and minimal regulatory exposure.
+
+A future governance token (Phase 2) is deliberately deferred until real escrow demand is proven. If/when launched, it will follow the controlled-supply model: utility-first design, 6–12 month linear vesting, no marketing-driven supply.
+
+### Failure modes this dodges
+
+| Failure mode (2025) | How we avoid it |
+|---|---|
+| Pump-and-dump tokens | No native token at launch — SOL is the only liquid asset on the platform |
+| Plutocratic governance (whale capture) | REP is non-transferable; one contributor, one voice |
+| DAO overhead (slow committees) | AI scoring replaces committee voting for small teams |
+| Pay-to-play access | Reputation is earned via verified work (score ≥ 60), never bought |
+
+---
+
 ## Deployment
 
 Frontend + scorer ship together on Vercel; the Anchor program is deployed separately to devnet.
