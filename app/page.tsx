@@ -1,38 +1,13 @@
-"use client";
-
-import dynamic from "next/dynamic";
-
-// Wallet button is dynamically imported with SSR disabled — wallet-adapter
-// reads `window` synchronously on import.
-const WalletMultiButton = dynamic(
-  () =>
-    import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
-  { ssr: false },
-);
+import Link from "next/link";
+import { Nav } from "@/components/nav";
 
 export default function Home() {
   return (
     <main className="flex flex-1 flex-col">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-5 border-b border-white/5 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <div className="size-8 rounded bg-gradient-to-br from-rep-cyan to-rep-purple grid place-items-center font-mono text-xs text-black font-bold">
-            PP
-          </div>
-          <div className="leading-tight">
-            <p className="text-base font-semibold tracking-tight">
-              Proof, <span className="text-rep-cyan">please!</span>
-            </p>
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-rep-muted">
-              indie-pool · devnet
-            </p>
-          </div>
-        </div>
-        <WalletMultiButton />
-      </header>
+      <Nav />
 
       {/* Hero */}
-      <section className="flex-1 grid place-items-center px-6 py-24">
+      <section className="flex-1 grid place-items-center px-6 py-20 sm:py-28">
         <div className="max-w-3xl text-center space-y-8">
           <p className="font-mono text-xs uppercase tracking-[0.3em] text-rep-cyan">
             decentralized contribution & reputation
@@ -42,68 +17,74 @@ export default function Home() {
             <br />
             <span className="text-rep-purple">Not just money.</span>
           </h1>
-          <p className="text-lg text-rep-muted max-w-xl mx-auto">
+          <p className="text-lg text-rep-muted max-w-xl mx-auto leading-relaxed">
             Submit code, art, music, or 3D contributions. An AI scorer reads
-            them, mints non-transferable reputation as Soulbound Tokens on
+            them and mints non-transferable reputation as Soulbound Tokens on
             Solana. Your work follows you across every project.
           </p>
-          <div className="flex items-center justify-center gap-4 pt-4">
-            <a
-              href="#"
+          <div className="flex items-center justify-center gap-4 pt-4 flex-wrap">
+            <Link
+              href="/submit"
               className="px-6 py-3 rounded-md bg-rep-cyan text-black font-medium hover:bg-rep-cyan/85 transition-colors"
             >
               Submit a contribution
-            </a>
-            <a
-              href="https://github.com/brutalesxyz/indie-pool"
-              target="_blank"
-              rel="noreferrer"
+            </Link>
+            <Link
+              href="/dashboard"
               className="px-6 py-3 rounded-md border border-white/10 hover:border-rep-purple/60 transition-colors"
             >
-              View on GitHub
-            </a>
+              View dashboard
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* Hand-off panel — visible to teammates picking up the project. */}
-      <section className="border-t border-white/5 bg-rep-card/40">
-        <div className="max-w-5xl mx-auto px-6 py-10 grid sm:grid-cols-3 gap-6 font-mono text-sm">
-          <div>
-            <p className="text-rep-cyan text-xs uppercase tracking-[0.2em] mb-2">
-              hour 0 status
-            </p>
-            <p className="text-rep-muted leading-relaxed">
-              Scaffolded. Next.js + Tailwind 4 + Solana wallet adapter wired.
-              Anchor program written but not yet built.
-            </p>
-          </div>
-          <div>
-            <p className="text-rep-purple text-xs uppercase tracking-[0.2em] mb-2">
-              next steps
-            </p>
-            <ol className="text-rep-muted leading-relaxed space-y-1 list-decimal list-inside marker:text-rep-purple/60">
-              <li>install rust + anchor + solana cli</li>
-              <li>anchor build && anchor keys sync</li>
-              <li>implement /api/score (hour 14-18)</li>
-            </ol>
-          </div>
-          <div>
-            <p className="text-rep-cyan text-xs uppercase tracking-[0.2em] mb-2">
-              docs
-            </p>
-            <p className="text-rep-muted leading-relaxed">
-              See <span className="text-rep-fg">CLAUDE.md</span> for locked
-              architecture and the 48h plan. Spec lives in{" "}
-              <span className="text-rep-fg">paper please.docx</span>.
-            </p>
+      {/* How it works */}
+      <section className="border-t border-white/5 bg-rep-card/30">
+        <div className="max-w-5xl mx-auto px-6 py-16">
+          <p className="font-mono text-xs uppercase tracking-[0.3em] text-rep-purple mb-2 text-center">
+            how it works
+          </p>
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-center mb-12">
+            One demo flow, end-to-end on devnet
+          </h2>
+          <div className="grid sm:grid-cols-3 gap-6">
+            <Step
+              n={1}
+              title="Submit"
+              body="Drop in project, type, IPFS hash, and a description. The contributor's wallet signs a Solana transaction that opens a Contribution PDA on devnet."
+            />
+            <Step
+              n={2}
+              title="AI score"
+              body="Claude reads the metadata, returns a 0-100 score plus reasoning. The oracle keypair signs verify_contribution to write the score on-chain."
+            />
+            <Step
+              n={3}
+              title="Mint REP"
+              body="A Token-2022 mint with the NonTransferable extension issues `score` REP into the contributor's ATA. Soulbound by construction — can't be sold or moved."
+            />
           </div>
         </div>
       </section>
 
-      <footer className="px-6 py-4 text-center text-xs font-mono text-rep-muted">
+      <footer className="px-6 py-6 text-center text-xs font-mono text-rep-muted border-t border-white/5">
         brutales xyz · without boundaries of any kind
       </footer>
     </main>
+  );
+}
+
+function Step({ n, title, body }: { n: number; title: string; body: string }) {
+  return (
+    <div className="rounded-xl border border-white/5 bg-rep-bg/40 p-6">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="size-8 rounded-md bg-gradient-to-br from-rep-cyan/30 to-rep-purple/30 grid place-items-center font-mono text-sm text-rep-cyan">
+          {n}
+        </div>
+        <p className="font-medium">{title}</p>
+      </div>
+      <p className="text-sm text-rep-muted leading-relaxed">{body}</p>
+    </div>
   );
 }

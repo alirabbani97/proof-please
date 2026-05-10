@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Anchor TS tests use deliberately loose typing because the IDL-generated
+    // types (added by `anchor build`) don't fully line up with our PDA layout
+    // (e.g. `oracle` UncheckedAccount alongside `oracleSigner`). Lint after
+    // anchor build emits `target/types/indie_pool.ts`.
+    "tests/**",
+    "target/**",
+    "programs/**",
   ]),
 ]);
 
