@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+/* Cyberpunk palette per spec §3.6. Don't soften these without checking
+ * the brief — visual identity is part of the deliverable. */
+@theme inline {
+  --color-rep-bg: #0d0d1a;
+  --color-rep-card: #1a1a2e;
+  --color-rep-card-2: #20203a;
+  --color-rep-cyan: #00e5ff;
+  --color-rep-purple: #7c3aed;
+  --color-rep-fg: #ededed;
+  --color-rep-muted: #6b7280;
+  --color-rep-danger: #ff3366;
+  --color-rep-success: #00ffa3;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  color-scheme: dark;
+  --background: var(--color-rep-bg);
+  --foreground: var(--color-rep-fg);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(124, 58, 237, 0.18), transparent 42%),
+    radial-gradient(circle at 88% 76%, rgba(0, 229, 255, 0.14), transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Glitch loader — apply with `class="rep-glitch"` on text nodes that show
+ * a "Verifying..." or "Minting..." state during async work. */
+@keyframes rep-glitch {
+  0%, 100% { transform: translate(0, 0); text-shadow: 0 0 0 transparent; }
+  20%      { transform: translate(-1px, 0); text-shadow: 1px 0 0 var(--color-rep-cyan), -1px 0 0 var(--color-rep-purple); }
+  40%      { transform: translate(1px, 0);  text-shadow: -1px 0 0 var(--color-rep-cyan), 1px 0 0 var(--color-rep-purple); }
+  60%      { transform: translate(0, 1px);  text-shadow: 0 1px 0 var(--color-rep-cyan), 0 -1px 0 var(--color-rep-purple); }
+  80%      { transform: translate(0, -1px); text-shadow: 0 -1px 0 var(--color-rep-cyan), 0 1px 0 var(--color-rep-purple); }
+}
+.rep-glitch {
+  animation: rep-glitch 0.6s steps(2, end) infinite;
+}
+
+/* Wallet-adapter modal: tame the default styles to match. */
+.wallet-adapter-button {
+  font-family: var(--font-sans) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em !important;
+}
+.wallet-adapter-button-trigger {
+  background: var(--color-rep-cyan) !important;
+  color: #000 !important;
+}
+.wallet-adapter-button-trigger:hover {
+  background: #00c4dc !important;
+}
+.wallet-adapter-modal-wrapper {
+  background: var(--color-rep-card) !important;
+  border: 1px solid rgba(0, 229, 255, 0.18);
+}

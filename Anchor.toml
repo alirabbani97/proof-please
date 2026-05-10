@@ -1,0 +1,35 @@
+[toolchain]
+anchor_version = "0.32.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+indie_pool = "11111111111111111111111111111111"
+
+[programs.devnet]
+indie_pool = "11111111111111111111111111111111"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "pnpm exec ts-mocha -p ./tsconfig.test.json -t 1000000 tests/**/*.ts"
+
+[test]
+startup_wait = 5000
+shutdown_wait = 2000
+upgradeable = false
+
+[test.validator]
+url = "https://api.devnet.solana.com"
+
+# After your first `anchor build`, run:
+#   anchor keys sync
+# That replaces the 11111... placeholders above AND in declare_id! with the
+# real program pubkey (target/deploy/indie_pool-keypair.json).
