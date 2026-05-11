@@ -13,7 +13,11 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useWallet } from "@solana/wallet-adapter-react";
+import {
+  useAnchorWallet,
+  useConnection,
+  useWallet,
+} from "@solana/wallet-adapter-react";
 import {
   CONTRIBUTION_TYPES,
   APPROVAL_THRESHOLD,
@@ -28,6 +32,7 @@ import {
 } from "@/lib/indie-pool/client";
 import type { Project } from "@/lib/indie-pool/projects";
 import { TYPE_COLOR } from "@/lib/indie-pool/projects";
+import { explorerAddr, explorerTx, truncateSig } from "@/lib/explorer";
 
 const WalletMultiButton = dynamic(
   () =>
@@ -40,7 +45,12 @@ const MIN_SCORING_MS = 2000;
 type Stage =
   | { kind: "form" }
   | { kind: "scoring" }
-  | { kind: "done"; contribution: Contribution; result: ScoreResult }
+  | {
+      kind: "done";
+      contribution: Contribution;
+      result: ScoreResult;
+      submitSig: string;
+    }
   | { kind: "error"; message: string };
 
 interface SubmitSlideoverProps {
@@ -50,6 +60,8 @@ interface SubmitSlideoverProps {
 
 export function SubmitSlideover({ project, onClose }: SubmitSlideoverProps) {
   const { connected, publicKey } = useWallet();
+  const anchorWallet = useAnchorWallet();
+  const { connection } = useConnection();
   const wallet = publicKey?.toBase58() ?? null;
   const firstFieldRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -104,13 +116,19 @@ export function SubmitSlideover({ project, onClose }: SubmitSlideoverProps) {
     setStage({ kind: "scoring" });
     const start = Date.now();
     try {
-      const { contribution } = await submitContribution({
-        contributor: wallet,
-        projectId: project.slug,
-        contributionType,
-        ipfsHash: ipfsHash.trim() || `bafybei${randomHex(46)}`,
-        description: desc,
-      });
+      const chain = anchorWallet
+        ? { connection, wallet: anchorWallet }
+        : undefined;
+      const { contribution, signature } = await submitContribution(
+        {
+          contributor: wallet,
+          projectId: project.slug,
+          contributionType,
+          ipfsHash: ipfsHash.trim() || `bafybei${randomHex(46)}`,
+          description: desc,
+        },
+        chain,
+      );
       const result = await scoreContribution(contribution.pubkey);
       const updated = await applyVerification(contribution.pubkey, result);
       // Hold the "scoring" UI for at least MIN_SCORING_MS so the moment
@@ -119,7 +137,12 @@ export function SubmitSlideover({ project, onClose }: SubmitSlideoverProps) {
       if (elapsed < MIN_SCORING_MS) {
         await new Promise((r) => setTimeout(r, MIN_SCORING_MS - elapsed));
       }
-      setStage({ kind: "done", contribution: updated, result });
+      setStage({
+        kind: "done",
+        contribution: updated,
+        result,
+        submitSig: signature,
+      });
     } catch (err) {
       setStage({
         kind: "error",
@@ -178,6 +201,8 @@ export function SubmitSlideover({ project, onClose }: SubmitSlideoverProps) {
           ) : stage.kind === "done" ? (
             <ResultState
               result={stage.result}
+              contributionPda={stage.contribution.pubkey}
+              submitSig={stage.submitSig}
               onSubmitAnother={() => setStage({ kind: "form" })}
               minScore={project.minScoreThreshold}
             />
@@ -341,16 +366,21 @@ function ScoringState() {
 
 function ResultState({
   result,
+  contributionPda,
+  submitSig,
   onSubmitAnother,
   minScore,
 }: {
   result: ScoreResult;
+  contributionPda: string;
+  submitSig: string;
   onSubmitAnother: () => void;
   minScore: number;
 }) {
   const passed = result.score >= APPROVAL_THRESHOLD;
   const meetsMin = result.score >= minScore;
   const accent = passed ? "var(--color-rep-success)" : "var(--color-rep-danger)";
+  const realChain = Boolean(result.verifyTx);
 
   return (
     <div className="px-6 py-8 space-y-6">
@@ -386,6 +416,44 @@ function ResultState({
         <p className="text-sm leading-relaxed">{result.reasoning}</p>
       </div>
 
+      {/* On-chain artifacts */}
+      <div className="border border-white/5 bg-rep-bg p-4 space-y-2">
+        <div className="flex items-baseline justify-between">
+          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-rep-cyan">
+            on-chain artifacts
+          </p>
+          <p
+            className={`font-mono text-[10px] uppercase tracking-[0.2em] ${
+              realChain ? "text-rep-success" : "text-rep-muted"
+            }`}
+          >
+            {realChain ? "devnet · live" : "settlement mocked"}
+          </p>
+        </div>
+        <SlideoverArtifactRow label="submit tx" sig={submitSig} kind="tx" />
+        <SlideoverArtifactRow
+          label="verify tx"
+          sig={result.verifyTx}
+          kind="tx"
+          missingHint="(set ANTHROPIC_API_KEY + ORACLE_KEYPAIR_JSON)"
+        />
+        <SlideoverArtifactRow
+          label="mint tx"
+          sig={result.mintTx}
+          kind="tx"
+          missingHint={
+            !passed
+              ? "(below threshold — no SBT)"
+              : "(awaiting on-chain mint)"
+          }
+        />
+        <SlideoverArtifactRow
+          label="contribution pda"
+          sig={contributionPda}
+          kind="addr"
+        />
+      </div>
+
       {/* Actions */}
       <div className="grid grid-cols-2 gap-2 pt-2">
         <button
@@ -402,6 +470,50 @@ function ResultState({
         </Link>
       </div>
     </div>
+  );
+}
+
+function SlideoverArtifactRow({
+  label,
+  sig,
+  kind,
+  missingHint,
+}: {
+  label: string;
+  sig?: string;
+  kind: "tx" | "addr";
+  missingHint?: string;
+}) {
+  if (!sig) {
+    return (
+      <div className="flex items-baseline justify-between gap-3 font-mono text-[11px]">
+        <span className="text-rep-muted uppercase tracking-[0.15em] text-[10px] shrink-0">
+          {label}
+        </span>
+        <span className="text-rep-muted italic text-right truncate">
+          {missingHint ?? "—"}
+        </span>
+      </div>
+    );
+  }
+  const href = kind === "tx" ? explorerTx(sig) : explorerAddr(sig);
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-baseline justify-between gap-3 font-mono text-[11px] hover:bg-rep-cyan/5 -mx-1.5 px-1.5 py-0.5 rounded transition-colors group"
+    >
+      <span className="text-rep-muted uppercase tracking-[0.15em] text-[10px] shrink-0">
+        {label}
+      </span>
+      <span className="text-rep-cyan group-hover:underline truncate text-right">
+        {truncateSig(sig)}{" "}
+        <span className="text-rep-cyan/60" aria-hidden>
+          ↗
+        </span>
+      </span>
+    </a>
   );
 }
 

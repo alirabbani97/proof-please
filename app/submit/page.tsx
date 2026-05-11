@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
 import { Nav } from "@/components/nav";
 import { WalletGate } from "@/components/wallet-gate";
 import { ScoreRing } from "@/components/score-ring";
 import { RotatingText } from "@/components/rotating-text";
 import { useWalletPubkey } from "@/lib/use-wallet-pubkey";
+import { explorerAddr, explorerTx, truncateSig } from "@/lib/explorer";
 
 const SUBMITTING_PHRASES = [
   "Awaiting wallet signature…",
@@ -40,7 +42,12 @@ type Stage =
   | { kind: "form" }
   | { kind: "submitting" }
   | { kind: "pending"; contribution: Contribution; signature: string }
-  | { kind: "done"; contribution: Contribution; result: ScoreResult }
+  | {
+      kind: "done";
+      contribution: Contribution;
+      result: ScoreResult;
+      submitSig: string;
+    }
   | { kind: "error"; message: string };
 
 export default function SubmitPage() {
@@ -56,6 +63,8 @@ export default function SubmitPage() {
 
 function SubmitFlow() {
   const wallet = useWalletPubkey();
+  const anchorWallet = useAnchorWallet();
+  const { connection } = useConnection();
   const [stage, setStage] = useState<Stage>({ kind: "form" });
 
   // Form state.
@@ -78,17 +87,30 @@ function SubmitFlow() {
     }
     setStage({ kind: "submitting" });
     try {
-      const { contribution, signature } = await submitContribution({
-        contributor: wallet,
-        projectId: project,
-        contributionType,
-        ipfsHash: ipfsHash.trim() || `bafybei${randomHex(46)}`,
-        description: desc,
-      });
+      // When the wallet exposes Anchor-compatible signing, the real on-chain
+      // path runs; otherwise submitContribution falls back to localStorage.
+      const chain = anchorWallet
+        ? { connection, wallet: anchorWallet }
+        : undefined;
+      const { contribution, signature } = await submitContribution(
+        {
+          contributor: wallet,
+          projectId: project,
+          contributionType,
+          ipfsHash: ipfsHash.trim() || `bafybei${randomHex(46)}`,
+          description: desc,
+        },
+        chain,
+      );
       setStage({ kind: "pending", contribution, signature });
       const result = await scoreContribution(contribution.pubkey);
       const updated = await applyVerification(contribution.pubkey, result);
-      setStage({ kind: "done", contribution: updated, result });
+      setStage({
+        kind: "done",
+        contribution: updated,
+        result,
+        submitSig: signature,
+      });
     } catch (err) {
       setStage({
         kind: "error",
@@ -139,6 +161,7 @@ function SubmitFlow() {
             <ResultPanel
               contribution={stage.contribution}
               result={stage.result}
+              submitSig={stage.submitSig}
               onReset={() => setStage({ kind: "form" })}
             />
           )}
@@ -356,10 +379,12 @@ function PendingPanel({
 function ResultPanel({
   contribution,
   result,
+  submitSig,
   onReset,
 }: {
   contribution: Contribution;
   result: ScoreResult;
+  submitSig: string;
   onReset: () => void;
 }) {
   const verified = result.approved;
@@ -405,6 +430,14 @@ function ResultPanel({
         <Row k="approved at" v={fmtTime(contribution.verifiedAt)} />
       </div>
 
+      <OnChainArtifacts
+        contributionPda={contribution.pubkey}
+        submitSig={submitSig}
+        verifyTx={result.verifyTx}
+        mintTx={result.mintTx}
+        approved={verified}
+      />
+
       <div className="flex flex-col sm:flex-row gap-3">
         <Link
           href="/dashboard"
@@ -420,6 +453,115 @@ function ResultPanel({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Click through and verify" surface. Each row links to Solana Explorer.
+ * Distinguishes the *real* on-chain case (submitSig + verifyTx + mintTx
+ * are all real devnet sigs) from the *mock* case (no verifyTx — the
+ * scorer fell back to local) so judges always know what they're seeing.
+ */
+function OnChainArtifacts({
+  contributionPda,
+  submitSig,
+  verifyTx,
+  mintTx,
+  approved,
+}: {
+  contributionPda: string;
+  submitSig: string;
+  verifyTx?: string;
+  mintTx?: string;
+  approved: boolean;
+}) {
+  const realChain = Boolean(verifyTx);
+  return (
+    <div className="rounded-2xl border border-white/5 bg-rep-card/30 p-5 space-y-3">
+      <div className="flex items-baseline justify-between">
+        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-rep-cyan">
+          on-chain artifacts
+        </p>
+        <p
+          className={`font-mono text-[10px] uppercase tracking-[0.2em] ${
+            realChain ? "text-rep-success" : "text-rep-muted"
+          }`}
+        >
+          {realChain ? "devnet · live" : "settlement mocked"}
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <ExplorerRow
+          k="submit tx"
+          sig={submitSig}
+          href={explorerTx(submitSig)}
+        />
+        <ExplorerRow
+          k="verify tx"
+          sig={verifyTx}
+          href={verifyTx ? explorerTx(verifyTx) : undefined}
+          missingHint="(scorer in mock mode — set ANTHROPIC_API_KEY + ORACLE_KEYPAIR_JSON on Vercel)"
+        />
+        <ExplorerRow
+          k="mint tx"
+          sig={mintTx}
+          href={mintTx ? explorerTx(mintTx) : undefined}
+          missingHint={
+            !approved
+              ? "(score below threshold — no SBT minted)"
+              : "(awaiting on-chain mint)"
+          }
+        />
+        <ExplorerRow
+          k="contribution pda"
+          sig={contributionPda}
+          href={explorerAddr(contributionPda)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ExplorerRow({
+  k,
+  sig,
+  href,
+  missingHint,
+}: {
+  k: string;
+  sig?: string;
+  href?: string;
+  missingHint?: string;
+}) {
+  if (!sig || !href) {
+    return (
+      <div className="flex items-baseline justify-between gap-4 font-mono text-xs">
+        <span className="text-rep-muted uppercase tracking-[0.15em] text-[10px] shrink-0">
+          {k}
+        </span>
+        <span className="text-rep-muted text-right text-[11px] italic">
+          {missingHint ?? "—"}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-baseline justify-between gap-4 font-mono text-xs hover:bg-rep-cyan/5 -mx-2 px-2 py-0.5 rounded transition-colors group"
+    >
+      <span className="text-rep-muted uppercase tracking-[0.15em] text-[10px] shrink-0">
+        {k}
+      </span>
+      <span className="text-rep-cyan group-hover:underline truncate text-right">
+        {truncateSig(sig)}{" "}
+        <span className="text-rep-cyan/60" aria-hidden>
+          ↗
+        </span>
+      </span>
+    </a>
   );
 }
 

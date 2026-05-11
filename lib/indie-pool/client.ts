@@ -12,7 +12,9 @@
  * fallback to a deterministic local score (so the demo never dead-ends
  * on a missing API key).
  */
-import { Connection, PublicKey } from "@solana/web3.js";
+import { AnchorProvider, BN, Program } from "@coral-xyz/anchor";
+import type { AnchorWallet } from "@solana/wallet-adapter-react";
+import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getAccount,
@@ -20,6 +22,9 @@ import {
   TOKEN_2022_PROGRAM_ID,
   TokenAccountNotFoundError,
 } from "@solana/spl-token";
+
+import idl from "@/lib/idl/indie_pool.json";
+import type { IndiePool } from "@/lib/idl/indie_pool";
 
 import type {
   Contribution,
@@ -30,6 +35,17 @@ import { APPROVAL_THRESHOLD } from "./types";
 import { loadStore, saveStore } from "./store";
 
 const PLACEHOLDER_PROGRAM_ID = "11111111111111111111111111111111";
+
+/**
+ * Bundle of browser-side chain resources. Caller obtains these via
+ * `useConnection()` + `useAnchorWallet()`. When absent (no wallet, or env
+ * not configured) the client functions fall back to localStorage so the
+ * demo flow never breaks offline.
+ */
+export interface ChainCtx {
+  connection: Connection;
+  wallet: AnchorWallet;
+}
 
 export interface SubmitParams {
   contributor: string; // base58 wallet pubkey
@@ -46,11 +62,105 @@ export interface SubmitResult {
 }
 
 /**
- * REAL IMPL: build a `submit_contribution(nonce, projectId, type, hash, desc)`
- * instruction with the contributor's wallet as signer, send via the connected
- * wallet, await confirmation, fetch the resulting Contribution PDA.
+ * Submits a contribution.
+ *
+ * Tries the real on-chain path first when `chain` is provided AND
+ * NEXT_PUBLIC_PROGRAM_ID points to a real deployed program. Falls back to a
+ * localStorage mock otherwise so the demo still runs offline / without env.
+ *
+ * On-chain path:
+ *   1. Derives the contribution PDA from [b"contribution", wallet, nonce].
+ *   2. Calls submit_contribution(nonce, projectId, type, ipfsHash, desc).
+ *   3. Phantom popup → user signs → tx broadcast → confirmation.
+ *   4. Mirrors the PDA into localStorage as an optimistic cache so the
+ *      dashboard updates instantly without re-fetching.
  */
-export async function submitContribution(p: SubmitParams): Promise<SubmitResult> {
+export async function submitContribution(
+  p: SubmitParams,
+  chain?: ChainCtx,
+): Promise<SubmitResult> {
+  const programIdStr = process.env.NEXT_PUBLIC_PROGRAM_ID;
+  if (chain && programIdStr && programIdStr !== PLACEHOLDER_PROGRAM_ID) {
+    return submitOnChain(p, chain, programIdStr);
+  }
+  return submitMock(p);
+}
+
+async function submitOnChain(
+  p: SubmitParams,
+  { connection, wallet }: ChainCtx,
+  programIdStr: string,
+): Promise<SubmitResult> {
+  const programId = new PublicKey(programIdStr);
+  const contributorPk = wallet.publicKey;
+
+  // Sanity: the wallet's pubkey must match the one we're recording. The UI
+  // passes the same value through, but defending against a stale prop.
+  if (contributorPk.toBase58() !== p.contributor) {
+    throw new Error(
+      `submitContribution: wallet pubkey (${contributorPk
+        .toBase58()
+        .slice(0, 8)}…) does not match the contributor passed to the form.`,
+    );
+  }
+
+  const provider = new AnchorProvider(connection, wallet, {
+    commitment: "confirmed",
+  });
+  const program = new Program<IndiePool>(idl as IndiePool, provider);
+
+  const nonceBN = new BN(Date.now());
+  const nonceLeBytes = nonceBN.toArrayLike(Buffer, "le", 8);
+
+  const [contributionPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("contribution"), contributorPk.toBuffer(), nonceLeBytes],
+    programId,
+  );
+  const [oracleStatePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("oracle")],
+    programId,
+  );
+
+  const signature = await program.methods
+    .submitContribution(
+      nonceBN,
+      p.projectId,
+      p.contributionType,
+      p.ipfsHash,
+      p.description,
+    )
+    .accounts({
+      contributor: contributorPk,
+      oracleState: oracleStatePda,
+      contribution: contributionPda,
+      systemProgram: SystemProgram.programId,
+    } as never)
+    .rpc();
+
+  const c: Contribution = {
+    pubkey: contributionPda.toBase58(),
+    contributor: p.contributor,
+    nonce: nonceBN.toString(),
+    projectId: p.projectId,
+    contributionType: p.contributionType,
+    ipfsHash: p.ipfsHash,
+    description: p.description,
+    status: "Pending",
+    score: 0,
+    submittedAt: Math.floor(Date.now() / 1000),
+    minted: false,
+  };
+
+  // Optimistic cache: dashboard reads localStorage first; the real chain
+  // values reconcile on next refresh. Keeps the UI snappy.
+  const store = loadStore();
+  store.contributions.unshift(c);
+  saveStore(store);
+
+  return { contribution: c, signature };
+}
+
+async function submitMock(p: SubmitParams): Promise<SubmitResult> {
   await delay(1200); // simulate signature + confirmation
   const nonce = String(Date.now());
   const c: Contribution = {

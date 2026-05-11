@@ -53,4 +53,15 @@ export interface ScoreResult {
   score: number;
   reasoning: string;
   approved: boolean;
+  /**
+   * Devnet tx signature of verify_contribution. Present only when the API
+   * route performed real on-chain settlement (i.e., the oracle keypair +
+   * program ID env vars were configured). Undefined in mock/fallback mode.
+   */
+  verifyTx?: string;
+  /**
+   * Devnet tx signature of mint_reputation. Present only when approved AND
+   * on-chain settlement succeeded.
+   */
+  mintTx?: string;
 }
