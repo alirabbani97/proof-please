@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Nav } from "@/components/nav";
 import { GlitchText } from "@/components/glitch-text";
+import { LiveFeed } from "@/components/live-feed";
 
 export default function Home() {
   return (
@@ -41,6 +42,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Live on-chain activity */}
+      <LiveFeed />
 
       {/* How it works */}
       <section className="border-t border-white/5 bg-rep-card/30">

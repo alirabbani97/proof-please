@@ -36,6 +36,20 @@ import {
 
 const DEFAULT_RPC = "https://api.devnet.solana.com";
 
+/**
+ * Returns a valid http(s) URL; falls back to DEFAULT_RPC if the env var is
+ * unset, empty, or missing a protocol. `??` alone would let `""` through;
+ * the SDK then throws "Endpoint URL must start with `http:` or `https:`"
+ * and breaks SSR. This is the belt-and-braces version.
+ */
+function resolveRpcEndpoint(): string {
+  const raw = process.env.NEXT_PUBLIC_RPC_URL;
+  if (raw && (raw.startsWith("https://") || raw.startsWith("http://"))) {
+    return raw;
+  }
+  return DEFAULT_RPC;
+}
+
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <WalletNoticeProvider>
@@ -45,7 +59,7 @@ export function Providers({ children }: { children: ReactNode }) {
 }
 
 function InnerProviders({ children }: { children: ReactNode }) {
-  const endpoint = process.env.NEXT_PUBLIC_RPC_URL ?? DEFAULT_RPC;
+  const endpoint = resolveRpcEndpoint();
   const wallets = useMemo<Adapter[]>(() => [], []);
   const reportError = useWalletNoticeReporter();
 
