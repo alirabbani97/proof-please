@@ -12,6 +12,15 @@
  * fallback to a deterministic local score (so the demo never dead-ends
  * on a missing API key).
  */
+import { Connection, PublicKey } from "@solana/web3.js";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAccount,
+  getAssociatedTokenAddressSync,
+  TOKEN_2022_PROGRAM_ID,
+  TokenAccountNotFoundError,
+} from "@solana/spl-token";
+
 import type {
   Contribution,
   ContributionType,
@@ -19,6 +28,8 @@ import type {
 } from "./types";
 import { APPROVAL_THRESHOLD } from "./types";
 import { loadStore, saveStore } from "./store";
+
+const PLACEHOLDER_PROGRAM_ID = "11111111111111111111111111111111";
 
 export interface SubmitParams {
   contributor: string; // base58 wallet pubkey
@@ -142,10 +153,65 @@ export function listContributions(contributor: string): Contribution[] {
 }
 
 /**
- * REAL IMPL: read the contributor's Token-2022 ATA balance for the REP mint.
+ * Reads the contributor's REP balance.
+ *
+ * Tries the Token-2022 ATA on-chain first when NEXT_PUBLIC_PROGRAM_ID and
+ * NEXT_PUBLIC_RPC_URL are configured to non-placeholder values. Falls back
+ * to localStorage on any failure (network, missing env, malformed pubkey,
+ * etc.) so the dashboard never goes blank during demos or offline runs.
+ *
+ * The localStorage map is still written by `applyVerification`, so it acts
+ * as both an offline fallback and a faster optimistic cache.
  */
-export function getRepBalance(contributor: string): number {
+export async function getRepBalance(contributor: string): Promise<number> {
+  const onChain = await tryReadOnChainRep(contributor);
+  if (onChain !== null) return onChain;
   return loadStore().repBalance[contributor] ?? 0;
+}
+
+async function tryReadOnChainRep(contributor: string): Promise<number | null> {
+  const programIdStr = process.env.NEXT_PUBLIC_PROGRAM_ID;
+  const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
+  if (
+    !programIdStr ||
+    programIdStr === PLACEHOLDER_PROGRAM_ID ||
+    !rpcUrl
+  ) {
+    return null;
+  }
+
+  try {
+    const programId = new PublicKey(programIdStr);
+    const [repMintPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("rep_mint")],
+      programId,
+    );
+    const contributorPk = new PublicKey(contributor);
+    const ata = getAssociatedTokenAddressSync(
+      repMintPda,
+      contributorPk,
+      false,
+      TOKEN_2022_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+
+    const connection = new Connection(rpcUrl, "confirmed");
+    const account = await getAccount(
+      connection,
+      ata,
+      "confirmed",
+      TOKEN_2022_PROGRAM_ID,
+    );
+    return Number(account.amount);
+  } catch (err) {
+    // ATA not yet minted to → that's a balance of 0, not an error.
+    if (err instanceof TokenAccountNotFoundError) return 0;
+    console.warn(
+      "[getRepBalance] on-chain read failed; falling back to localStorage",
+      err,
+    );
+    return null;
+  }
 }
 
 export function findContribution(pubkey: string): Contribution | undefined {

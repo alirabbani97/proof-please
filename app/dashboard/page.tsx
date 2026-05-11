@@ -38,7 +38,20 @@ function Dashboard() {
   useEffect(() => {
     if (!wallet) return;
     setContributions(listContributions(wallet));
-    setRep(getRepBalance(wallet));
+    // getRepBalance is async — it tries the on-chain ATA first, then falls
+    // back to localStorage. Guard against the wallet flipping mid-flight so
+    // we don't write a stale value into state.
+    let cancelled = false;
+    getRepBalance(wallet)
+      .then((bal) => {
+        if (!cancelled) setRep(bal);
+      })
+      .catch(() => {
+        if (!cancelled) setRep(0);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [wallet, refreshNonce]);
   /* eslint-enable react-hooks/set-state-in-effect */
 

@@ -12,9 +12,23 @@
  * set SCORER_MODEL=claude-opus-4-7 to upgrade for higher-stakes scoring.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { Keypair } from "@solana/web3.js";
+import { AnchorProvider, Program, Wallet } from "@coral-xyz/anchor";
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  SystemProgram,
+} from "@solana/web3.js";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddressSync,
+  TOKEN_2022_PROGRAM_ID,
+} from "@solana/spl-token";
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+
+import idl from "@/lib/idl/indie_pool.json";
+import type { IndiePool } from "@/lib/idl/indie_pool";
 
 export const runtime = "nodejs"; // Solana SDKs need Node crypto.
 export const dynamic = "force-dynamic";
@@ -398,56 +412,76 @@ async function performOnChainSettlement(
   args: SettlementArgs,
 ): Promise<SettlementResult> {
   // The reasoning hash is what goes on-chain — full reasoning text would be
-  // too expensive in account space. Hash matches what the program's verify
-  // instruction expects.
+  // too expensive in account space. The program's verify_contribution
+  // expects 32 bytes.
   const reasoningHash = createHash("sha256").update(args.reasoning).digest();
 
-  // TODO(anchor-build): replace this block with the real Anchor calls once
-  // `anchor build` emits target/types/indie_pool.ts. The shape is:
-  //
-  //   import { AnchorProvider, Program, Wallet } from "@coral-xyz/anchor";
-  //   import { Connection, PublicKey } from "@solana/web3.js";
-  //   import type { IndiePool } from "../../../target/types/indie_pool";
-  //   import idl from "../../../target/idl/indie_pool.json";
-  //
-  //   const connection = new Connection(process.env.SOLANA_RPC_URL!, "confirmed");
-  //   const provider = new AnchorProvider(connection, new Wallet(args.oracleKp), {
-  //     commitment: "confirmed",
-  //   });
-  //   const program = new Program<IndiePool>(idl as IndiePool, provider);
-  //
-  //   const verifyTx = await program.methods
-  //     .verifyContribution(args.score, [...reasoningHash])
-  //     .accounts({
-  //       oracleSigner: args.oracleKp.publicKey,
-  //       oracle: args.oracleKp.publicKey,
-  //       contribution: new PublicKey(args.contributionPubkey),
-  //     })
-  //     .rpc();
-  //
-  //   let mintTx: string | undefined;
-  //   if (args.approved) {
-  //     mintTx = await program.methods
-  //       .mintReputation()
-  //       .accounts({
-  //         payer: args.oracleKp.publicKey,
-  //         contribution: new PublicKey(args.contributionPubkey),
-  //         contributor: new PublicKey(args.contributor),
-  //       })
-  //       .rpc();
-  //   }
-  //   return { verifyTx, mintTx };
-  //
-  // Until that ships, log the intent so it's observable in Vercel logs and
-  // return undefined — the frontend already handles the no-tx-signature case.
-  console.log("[scorer] on-chain settlement deferred (anchor build pending)", {
-    contribution: args.contributionPubkey,
-    contributor: args.contributor,
-    score: args.score,
-    approved: args.approved,
-    oracle: args.oracleKp.publicKey.toBase58(),
-    programId: args.programId,
-    reasoningHash: reasoningHash.toString("hex"),
-  });
-  return {};
+  const rpcUrl = process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
+  const connection = new Connection(rpcUrl, "confirmed");
+  const provider = new AnchorProvider(
+    connection,
+    new Wallet(args.oracleKp),
+    { commitment: "confirmed" },
+  );
+  const program = new Program<IndiePool>(idl as IndiePool, provider);
+
+  // Derive all PDAs the program expects. Matches the seeds in
+  // programs/indie-pool/src/lib.rs.
+  const programId = new PublicKey(args.programId);
+  const [oracleStatePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("oracle")],
+    programId,
+  );
+  const [repMintPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("rep_mint")],
+    programId,
+  );
+  const [mintAuthorityPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("mint_authority")],
+    programId,
+  );
+  const contributionPubkey = new PublicKey(args.contributionPubkey);
+  const contributorPubkey = new PublicKey(args.contributor);
+
+  // 1) verify_contribution — oracle-signed. The has_one = oracle constraint
+  // on OracleState is what gates trust; any other signer fails here.
+  const verifyTx = await program.methods
+    .verifyContribution(args.score, Array.from(reasoningHash))
+    .accounts({
+      oracleSigner: args.oracleKp.publicKey,
+      oracleState: oracleStatePda,
+      oracle: args.oracleKp.publicKey,
+      contribution: contributionPubkey,
+    } as never)
+    .rpc();
+
+  // 2) mint_reputation — only when approved. Anyone can call it; the program
+  // enforces status == Verified && !minted internally.
+  let mintTx: string | undefined;
+  if (args.approved) {
+    const contributorAta = getAssociatedTokenAddressSync(
+      repMintPda,
+      contributorPubkey,
+      false,
+      TOKEN_2022_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    );
+    mintTx = await program.methods
+      .mintReputation()
+      .accounts({
+        payer: args.oracleKp.publicKey,
+        oracleState: oracleStatePda,
+        contribution: contributionPubkey,
+        contributor: contributorPubkey,
+        repMint: repMintPda,
+        mintAuthority: mintAuthorityPda,
+        contributorTokenAccount: contributorAta,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      } as never)
+      .rpc();
+  }
+
+  return { verifyTx, mintTx };
 }
