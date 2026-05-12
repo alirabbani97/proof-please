@@ -1,102 +1,37 @@
-import { Nav } from "@/components/nav";
-import { TruncatedKey } from "@/components/truncate-key";
+"use client";
 
 /**
- * Project Pool screen — UI preview only.
+ * Project Pool — Layer 2 escrows.
  *
- * Per the locked decisions in CLAUDE.md, escrow logic is NOT implemented
- * on-chain for the MVP. This page renders mocked data so judges/testers
- * can see the intended escrow flow. The banner at the top is honest
- * about what's mocked vs real.
+ * Reads real on-chain ProjectEscrow accounts via the indie-pool client.
+ * Aggregates total-funded / total-released across all escrows for the
+ * headline stats. Each escrow card joins on-chain state with the
+ * project metadata from `lib/indie-pool/projects.ts` so the visuals
+ * stay consistent with /projects.
  *
- * When `create_project_escrow` + `release_milestone` are added on-chain,
- * the data plumbing here moves into the indie-pool client; the layout
- * stays.
+ * When no escrows have been created yet, falls back to a clean empty
+ * state pointing users to /projects to fund the first one.
+ *
+ * The "recent payouts" tile is intentionally NOT shown here — that data
+ * lives in `ReleaseReceipt` PDAs and the homepage `LiveFeed` already
+ * streams those events in real time. Duplicating it here would be noise.
  */
 
-const PROJECT = {
-  name: "Supercool RPG",
-  description:
-    "Open-world fantasy with procedural dungeons and player-driven economies.",
-  creator: "5fJWp5n7sKxpYKZRb1H8xW9Z5J8QqPJxNkDc3LVhV1xT",
-  totalEscrow: 12.5,
-  paid: 7.25,
-  available: 5.25,
-  contributors: 7,
-};
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { useConnection } from "@solana/wallet-adapter-react";
 
-const MILESTONES: Milestone[] = [
-  {
-    id: 1,
-    title: "Procedural dungeon generator",
-    reward: 2.5,
-    status: "paid",
-    progress: 1.0,
-    contributors: 2,
-  },
-  {
-    id: 2,
-    title: "Cover art + key visuals",
-    reward: 1.75,
-    status: "paid",
-    progress: 1.0,
-    contributors: 1,
-  },
-  {
-    id: 3,
-    title: "Soundtrack · first chapter",
-    reward: 3.0,
-    status: "paid",
-    progress: 1.0,
-    contributors: 1,
-  },
-  {
-    id: 4,
-    title: "Combat AI v2",
-    reward: 2.5,
-    status: "in_progress",
-    progress: 0.66,
-    contributors: 3,
-  },
-  {
-    id: 5,
-    title: "Multiplayer netcode",
-    reward: 2.75,
-    status: "locked",
-    progress: 0,
-    contributors: 0,
-  },
-];
+import { Nav } from "@/components/nav";
+import { TruncatedKey } from "@/components/truncate-key";
+import { FundEscrowModal } from "@/components/fund-escrow-modal";
+import { listEscrows, listProjects } from "@/lib/indie-pool/client";
+import type { OnChainProject } from "@/lib/indie-pool/client";
+import { projectFromOnChain, TYPE_COLOR } from "@/lib/indie-pool/projects";
+import type { Project } from "@/lib/indie-pool/projects";
+import type { ProjectEscrowState } from "@/lib/indie-pool/types";
+import { explorerAddr } from "@/lib/explorer";
 
-const RECENT_PAYOUTS = [
-  {
-    contributor: "9aLLzRrZ3vF8xt2pKeBbGY7D1nQ5cWAVhY9bM4kJfH8s",
-    amount: 1.25,
-    milestone: "Procedural dungeon generator",
-    at: "2h ago",
-  },
-  {
-    contributor: "7kP2rVzN9bFcXmYqRdEWxvHJtL4G6sAUcK1wM3pTn8B",
-    amount: 1.75,
-    milestone: "Cover art",
-    at: "1d ago",
-  },
-  {
-    contributor: "3xT9pN5kBcRYqHhJsW8rAVGLnD4mU2zQ7vKpM6jXyF1",
-    amount: 3.0,
-    milestone: "Soundtrack",
-    at: "3d ago",
-  },
-];
-
-interface Milestone {
-  id: number;
-  title: string;
-  reward: number;
-  status: "paid" | "in_progress" | "locked";
-  progress: number;
-  contributors: number;
-}
+const LAMPORTS_PER_SOL = 1_000_000_000;
 
 export default function PoolPage() {
   return (
@@ -104,105 +39,161 @@ export default function PoolPage() {
       <Nav />
       <section className="flex-1 px-4 sm:px-6 py-10 sm:py-14">
         <div className="max-w-5xl mx-auto space-y-8">
-          <PreviewBanner />
-
-          <header>
-            <p className="font-mono text-xs uppercase tracking-[0.3em] text-rep-purple mb-2">
-              project pool · escrow
-            </p>
-            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-              {PROJECT.name}
-            </h1>
-            <p className="text-rep-muted text-sm mt-3 max-w-xl leading-relaxed">
-              {PROJECT.description}
-            </p>
-            <p className="font-mono text-xs text-rep-muted mt-3">
-              creator <TruncatedKey pubkey={PROJECT.creator} />
-              <span className="mx-3 opacity-30">|</span>
-              {PROJECT.contributors} contributors
-            </p>
-          </header>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <SolStat
-              label="total escrow"
-              amount={PROJECT.totalEscrow}
-              accent="cyan"
-            />
-            <SolStat label="paid out" amount={PROJECT.paid} accent="success" />
-            <SolStat
-              label="available"
-              amount={PROJECT.available}
-              accent="purple"
-            />
-          </div>
-
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold tracking-tight">Milestones</h2>
-            <div className="space-y-3">
-              {MILESTONES.map((m) => (
-                <MilestoneRow key={m.id} m={m} />
-              ))}
-            </div>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold tracking-tight">
-              Recent payouts
-            </h2>
-            <div className="rounded-xl border border-white/5 bg-rep-card/40 divide-y divide-white/5">
-              {RECENT_PAYOUTS.map((p, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between p-4 gap-4"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm truncate">
-                      <TruncatedKey
-                        pubkey={p.contributor}
-                        className="text-rep-fg"
-                      />
-                    </p>
-                    <p className="text-xs text-rep-muted truncate">
-                      {p.milestone}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-mono text-rep-cyan font-semibold text-sm">
-                      +{p.amount} SOL
-                    </p>
-                    <p className="text-[10px] uppercase tracking-[0.2em] font-mono text-rep-muted">
-                      {p.at}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          <Pool />
         </div>
       </section>
     </main>
   );
 }
 
-function PreviewBanner() {
+function Pool() {
+  const { connection } = useConnection();
+  const [escrows, setEscrows] = useState<ProjectEscrowState[]>([]);
+  const [projectsBySlug, setProjectsBySlug] = useState<
+    Record<string, OnChainProject>
+  >({});
+  const [loaded, setLoaded] = useState(false);
+  const [fundingProject, setFundingProject] = useState<Project | null>(null);
+
+  const refresh = useCallback(async () => {
+    const [escrowList, projectList] = await Promise.all([
+      listEscrows({ connection }),
+      listProjects({ connection }),
+    ]);
+    setEscrows(escrowList);
+    const map: Record<string, OnChainProject> = {};
+    for (const p of projectList) map[p.projectId] = p;
+    setProjectsBySlug(map);
+    setLoaded(true);
+  }, [connection]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const totalFunded = escrows.reduce((s, e) => s + e.totalFunded, 0);
+  const totalReleased = escrows.reduce((s, e) => s + e.totalReleased, 0);
+  const totalLocked = escrows.reduce((s, e) => s + e.balanceLamports, 0);
+
   return (
-    <div className="px-4 py-4 rounded-lg border border-rep-purple/30 bg-rep-purple/5 space-y-2">
-      <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-rep-purple">
-        layer 2 · escrow rewards
+    <>
+      <PreviewBanner anyLive={escrows.length > 0} />
+
+      <header>
+        <p className="font-mono text-xs uppercase tracking-[0.3em] text-rep-purple mb-2">
+          project pool · layer 2 escrows
+        </p>
+        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+          Real on-chain escrows
+        </h1>
+        <p className="text-rep-muted text-sm mt-3 max-w-xl leading-relaxed">
+          Anyone can fund an escrow for any project. The AI scorer
+          automatically releases SOL to verified contributors when their
+          contribution&apos;s project_id matches an existing escrow.
+        </p>
+      </header>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <SolStat
+          label="total locked"
+          lamports={totalLocked}
+          accent="cyan"
+        />
+        <SolStat
+          label="total released"
+          lamports={totalReleased}
+          accent="success"
+        />
+        <SolStat
+          label="total funded (cum.)"
+          lamports={totalFunded}
+          accent="purple"
+        />
+      </div>
+
+      {!loaded ? (
+        <EmptyState
+          line="Reading escrows from devnet…"
+        />
+      ) : escrows.length === 0 ? (
+        <EmptyState
+          line="No escrows created yet. Head to /projects to fund the first one."
+          cta={{ label: "Browse projects", href: "/projects" }}
+        />
+      ) : (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold tracking-tight">
+            Active escrows
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {escrows.map((e) => {
+              const oc = projectsBySlug[e.projectId];
+              const project = oc ? projectFromOnChain(oc, e) : undefined;
+              return (
+                <EscrowCard
+                  key={e.pubkey}
+                  escrow={e}
+                  project={project}
+                  onFund={() => {
+                    if (project) setFundingProject(project);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {fundingProject && (
+        <FundEscrowModal
+          key={fundingProject.id}
+          projectId={fundingProject.slug}
+          projectName={fundingProject.name}
+          existing={
+            escrows.find((e) => e.projectId === fundingProject.slug) ?? null
+          }
+          onClose={() => setFundingProject(null)}
+          onSuccess={() => {
+            void refresh();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// Note: `project` here is the lightweight UI Project translated from on-chain.
+// May be undefined if the escrow's project_id has no matching Project (which
+// after the strict-coupling upgrade shouldn't happen, but defensive guard).
+
+function PreviewBanner({ anyLive }: { anyLive: boolean }) {
+  return (
+    <div
+      className={`px-4 py-4 rounded-lg border space-y-2 ${
+        anyLive
+          ? "border-rep-success/30 bg-rep-success/5"
+          : "border-rep-purple/30 bg-rep-purple/5"
+      }`}
+    >
+      <p
+        className={`font-mono text-[10px] uppercase tracking-[0.25em] ${
+          anyLive ? "text-rep-success" : "text-rep-purple"
+        }`}
+      >
+        {anyLive ? "layer 2 · live on devnet" : "layer 2 · escrow rewards"}
       </p>
       <p className="text-xs text-rep-muted leading-relaxed">
         Project creators fund a Solana escrow PDA. The AI scorer&apos;s
-        verification of contribution milestones unlocks proportional SOL
-        payouts to verified contributors — milestone-gated, trustless,
-        auditable on-chain. Reputation (Layer 1) is earned via{" "}
+        verification of contributions unlocks proportional SOL payouts to
+        verified contributors — milestone-gated, trustless, auditable
+        on-chain. Reputation (Layer 1) is earned via{" "}
         <span className="text-rep-fg">non-transferable Soulbound Tokens</span>;
         SOL (Layer 2) flows on top of that signal.
       </p>
       <p className="text-[11px] text-rep-muted/70 italic">
-        Data on this page is illustrative — escrow state plumbing lands
-        post-MVP. The contribution → score → REP flow on /submit and
-        /dashboard is real.
+        {anyLive
+          ? "Numbers below are read from real on-chain ProjectEscrow accounts on devnet. Click any escrow to view it on Solana Explorer."
+          : "No escrows have been created yet — once someone funds one, this page lights up with real on-chain data."}
       </p>
     </div>
   );
@@ -210,13 +201,14 @@ function PreviewBanner() {
 
 function SolStat({
   label,
-  amount,
+  lamports,
   accent,
 }: {
   label: string;
-  amount: number;
+  lamports: number;
   accent: "cyan" | "success" | "purple";
 }) {
+  const sol = lamports / LAMPORTS_PER_SOL;
   const color =
     accent === "cyan"
       ? "text-rep-cyan"
@@ -229,56 +221,108 @@ function SolStat({
         {label}
       </p>
       <p className="flex items-baseline gap-2">
-        <span className={`text-3xl font-semibold ${color}`}>{amount}</span>
+        <span className={`text-3xl font-semibold tabular-nums ${color}`}>
+          {sol.toFixed(3)}
+        </span>
         <span className="font-mono text-xs text-rep-muted">SOL</span>
       </p>
     </div>
   );
 }
 
-function MilestoneRow({ m }: { m: Milestone }) {
-  const statusLabel = {
-    paid: "paid",
-    in_progress: "in progress",
-    locked: "locked",
-  }[m.status];
-  const statusColor = {
-    paid: "text-rep-success bg-rep-success/10 border-rep-success/20",
-    in_progress: "text-rep-cyan bg-rep-cyan/10 border-rep-cyan/20",
-    locked: "text-rep-muted bg-white/5 border-white/10",
-  }[m.status];
-  const barColor = {
-    paid: "bg-rep-success",
-    in_progress: "bg-rep-cyan",
-    locked: "bg-white/10",
-  }[m.status];
+function EscrowCard({
+  escrow,
+  project,
+  onFund,
+}: {
+  escrow: ProjectEscrowState;
+  project?: Project;
+  onFund: () => void;
+}) {
+  const balanceSol = escrow.balanceLamports / LAMPORTS_PER_SOL;
+  const releasedSol = escrow.totalReleased / LAMPORTS_PER_SOL;
+  const projectName = project?.name ?? escrow.projectId;
+  const accentVar = project
+    ? `var(--color-${TYPE_COLOR[project.primaryType]})`
+    : "var(--color-rep-cyan)";
 
   return (
-    <article className="rounded-xl border border-white/5 bg-rep-card/40 p-5">
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="font-medium text-sm truncate">{m.title}</p>
-          <p className="text-xs text-rep-muted mt-0.5 font-mono">
-            {m.contributors} contributor{m.contributors === 1 ? "" : "s"}
+    <article className="rounded-xl border border-white/5 bg-rep-card/40 p-5 space-y-3">
+      <header className="flex items-start gap-3">
+        <span
+          aria-hidden
+          className="mt-1.5 size-2 shrink-0"
+          style={{ backgroundColor: accentVar }}
+        />
+        <div className="flex-1 min-w-0">
+          <h3 className="font-medium tracking-tight truncate">
+            {projectName}
+          </h3>
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-rep-muted mt-0.5">
+            {project?.studio ?? "external project"}
           </p>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <span
-            className={`font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded border ${statusColor}`}
-          >
-            {statusLabel}
-          </span>
-          <span className="font-mono text-rep-cyan font-semibold text-sm">
-            {m.reward} SOL
-          </span>
-        </div>
-      </div>
-      <div className="mt-3 h-1 rounded-full bg-white/5 overflow-hidden">
-        <div
-          className={`h-full ${barColor} rep-bar-fill ${m.status === "in_progress" ? "rep-pulse" : ""}`}
-          style={{ width: `${Math.round(m.progress * 100)}%` }}
+      </header>
+
+      <div className="grid grid-cols-3 gap-2 font-mono text-[10px] uppercase tracking-[0.15em]">
+        <Cell label="balance" v={`${balanceSol.toFixed(3)} SOL`} />
+        <Cell label="released" v={`${releasedSol.toFixed(3)} SOL`} />
+        <Cell
+          label="rate"
+          v={`${escrow.lamportsPerScore.toLocaleString()} lpp`}
         />
       </div>
+
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <a
+          href={explorerAddr(escrow.pubkey)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono text-[10px] text-rep-cyan/70 hover:text-rep-cyan transition-colors truncate"
+        >
+          <TruncatedKey pubkey={escrow.pubkey} /> ↗
+        </a>
+        <button
+          onClick={onFund}
+          disabled={!project}
+          className="font-mono text-[10px] uppercase tracking-[0.15em] px-3 py-1.5 border border-rep-amber/40 text-rep-amber hover:bg-rep-amber/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          Top up
+        </button>
+      </div>
     </article>
+  );
+}
+
+function Cell({ label, v }: { label: string; v: string }) {
+  return (
+    <div className="bg-rep-bg/60 border border-white/5 rounded px-2.5 py-2">
+      <div className="text-rep-muted text-[9px]">{label}</div>
+      <div className="text-rep-fg text-[11px] mt-0.5 tabular-nums">{v}</div>
+    </div>
+  );
+}
+
+function EmptyState({
+  line,
+  cta,
+}: {
+  line: string;
+  cta?: { label: string; href: string };
+}) {
+  return (
+    <div className="border border-dashed border-white/10 bg-rep-card/30 px-6 py-14 text-center space-y-4">
+      <p className="text-sm text-rep-muted max-w-sm mx-auto leading-relaxed">
+        {line}
+      </p>
+      {cta && (
+        <Link
+          href={cta.href}
+          className="inline-block px-4 py-2 border border-white/15 hover:border-rep-fg text-sm transition-colors"
+        >
+          {cta.label}
+        </Link>
+      )}
+    </div>
   );
 }

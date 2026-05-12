@@ -10,19 +10,32 @@
 import Link from "next/link";
 import type { Project } from "@/lib/indie-pool/projects";
 import { TYPE_COLOR } from "@/lib/indie-pool/projects";
-import { CONTRIBUTION_TYPES } from "@/lib/indie-pool/types";
+import {
+  CONTRIBUTION_TYPES,
+  type ProjectEscrowState,
+} from "@/lib/indie-pool/types";
 import { ProjectArt } from "./project-art";
+
+const LAMPORTS_PER_SOL = 1_000_000_000;
 
 export function ProjectCard({
   project,
+  escrow,
   onSubmit,
+  onFund,
 }: {
   project: Project;
+  /** Real on-chain escrow state, when one exists for this project's slug. */
+  escrow: ProjectEscrowState | null;
   onSubmit: (p: Project) => void;
+  onFund: (p: Project) => void;
 }) {
   const typeMeta = CONTRIBUTION_TYPES.find((t) => t.value === project.primaryType);
   const accentVar = `var(--color-${TYPE_COLOR[project.primaryType]})`;
   const progressPct = Math.round(project.milestoneProgress * 100);
+  const escrowBalanceSol = escrow
+    ? escrow.balanceLamports / LAMPORTS_PER_SOL
+    : 0;
 
   return (
     <article className="flex flex-col bg-rep-card border border-white/5 hover:border-white/15 transition-colors">
@@ -108,14 +121,30 @@ export function ProjectCard({
           </div>
         </div>
 
+        {/* Layer 2 escrow status row */}
+        <div className="flex items-baseline justify-between gap-2 -mb-1 px-0.5">
+          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-rep-muted">
+            layer 2 escrow
+          </span>
+          {escrow ? (
+            <span className="font-mono text-[11px] text-rep-amber tabular-nums">
+              {escrowBalanceSol.toFixed(3)} SOL · {escrow.lamportsPerScore.toLocaleString()} lpp
+            </span>
+          ) : (
+            <span className="font-mono text-[10px] text-rep-muted italic">
+              not funded yet
+            </span>
+          )}
+        </div>
+
         {/* Buttons */}
-        <div className="grid grid-cols-2 gap-2 mt-auto pt-2">
-          <Link
-            href="/pool"
-            className="text-center px-3 py-2.5 border border-white/15 hover:border-rep-fg text-sm transition-colors"
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            onClick={() => onFund(project)}
+            className="px-3 py-2.5 border border-rep-amber/30 hover:border-rep-amber/70 text-rep-amber text-sm transition-colors"
           >
-            View details
-          </Link>
+            {escrow ? "Top up escrow" : "Fund escrow"}
+          </button>
           <button
             onClick={() => onSubmit(project)}
             className="px-3 py-2.5 bg-rep-cyan text-black text-sm font-medium hover:bg-rep-cyan/85 transition-colors"
@@ -123,6 +152,12 @@ export function ProjectCard({
             Submit contribution
           </button>
         </div>
+        <Link
+          href="/pool"
+          className="block text-center font-mono text-[10px] uppercase tracking-[0.2em] text-rep-muted hover:text-rep-fg transition-colors -mt-1"
+        >
+          view all escrows →
+        </Link>
       </div>
     </article>
   );

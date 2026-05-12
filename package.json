@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "init:oracle": "pnpm dlx tsx scripts/init-oracle.ts"
+    "init:oracle": "pnpm dlx tsx scripts/init-oracle.ts",
+    "seed:projects": "pnpm dlx tsx scripts/seed-projects.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",

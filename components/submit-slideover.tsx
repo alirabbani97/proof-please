@@ -438,13 +438,29 @@ function ResultState({
           missingHint="(set ANTHROPIC_API_KEY + ORACLE_KEYPAIR_JSON)"
         />
         <SlideoverArtifactRow
-          label="mint tx"
+          label="mint tx (L1)"
           sig={result.mintTx}
           kind="tx"
           missingHint={
             !passed
               ? "(below threshold — no SBT)"
               : "(awaiting on-chain mint)"
+          }
+        />
+        <SlideoverArtifactRow
+          label={
+            result.releaseAmountLamports !== undefined
+              ? `release tx (L2 · +${(
+                  result.releaseAmountLamports / 1_000_000_000
+                ).toFixed(4)} SOL)`
+              : "release tx (L2)"
+          }
+          sig={result.releaseMilestoneTx}
+          kind="tx"
+          missingHint={
+            !passed
+              ? "(below threshold — no SOL)"
+              : "(no escrow for this project)"
           }
         />
         <SlideoverArtifactRow

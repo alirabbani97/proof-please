@@ -1,6 +1,6 @@
 # Proof, please! — project status
 
-A snapshot for the team and anyone you share the repo with. Written **May 10, 2026**, mid-hackathon. If this disagrees with `CLAUDE.md`, `CLAUDE.md` wins (it's the live source of truth); if both disagree with the actual code, the code wins.
+A snapshot for the team and anyone you share the repo with. Last updated **May 12, 2026** — Layer 2 escrow is now live on devnet. If this disagrees with `CLAUDE.md`, `CLAUDE.md` wins (it's the live source of truth); if both disagree with the actual code, the code wins.
 
 ---
 
@@ -19,18 +19,29 @@ A Solana dApp that turns creative contributions (code, art, music, 3D, writing, 
 
 | Piece | State | Notes |
 |---|---|---|
-| Anchor program on Solana devnet | ✅ **deployed** | Program ID `EvgHfdx5xyTNoPnaHwDtySdAtMUYGcMz9nwCiwMLi9sn` |
-| Frontend on Vercel | ✅ **deployed** | Pages: `/`, `/submit`, `/dashboard`, `/pool`, `/projects` |
-| `/api/score` Vercel serverless route | ✅ **wired** | Code complete; *requires real `ANTHROPIC_API_KEY` to actually call Claude* |
-| `OracleState` PDA + REP mint init | ⏳ **needs one command** | Run `pnpm init:oracle` |
-| Real Claude scoring | ❌ **mock locally** | Frontend silently falls back to a deterministic local formula when the Anthropic call 401s |
-| On-chain `verify_contribution` settlement | ❌ **stubbed** | Code is documented + commented out at `app/api/score/route.ts:405-453` |
-| On-chain `mint_reputation` | ❌ **stubbed** | Same place |
-| Dashboard REP balance | ❌ **localStorage** | Should read Token-2022 ATA balance from chain once mint is real |
-| Phantom + Solflare wallet connect | ✅ **works** | Auto-discovered via Wallet Standard (no explicit adapter registration) |
-| Escrow / Layer 2 / `/pool` page | ❌ **mock UI by design** | Locked decision; spec greenlights this. Page has its own honesty disclaimer. |
+| Anchor program on Solana devnet | ✅ **deployed** (7 instructions, 4 accounts) | Program ID `EvgHfdx5xyTNoPnaHwDtySdAtMUYGcMz9nwCiwMLi9sn` |
+| Frontend on Vercel | ✅ **deployed** | `/`, `/submit`, `/dashboard`, `/pool`, `/projects` — push to redeploy after this batch |
+| `/api/score` route | ✅ **wired end-to-end** | Real Sonnet 4.6 + auto-settles verify_contribution + mint_reputation + release_milestone in one oracle-signed flow |
+| `OracleState` PDA + REP mint | ✅ **initialized** | `pnpm init:oracle` ran; oracle keypair in Vercel as `ORACLE_KEYPAIR_JSON` |
+| Real Claude scoring | ✅ **live** | Sonnet 4.6 with prompt-cached rubric. Mock fallback only if `ANTHROPIC_API_KEY` missing |
+| On-chain `verify_contribution` | ✅ **live** | Oracle-signed from `/api/score`; tx sig surfaced in result panel |
+| On-chain `mint_reputation` | ✅ **live** | Token-2022 NonTransferable REP minted to contributor's ATA |
+| Browser-side `submit_contribution` | ✅ **live** | Real Phantom-signed tx; ~0.003 SOL rent for contribution PDA |
+| Dashboard REP balance | ✅ **on-chain** | Reads Token-2022 ATA; localStorage is just offline fallback |
+| Dashboard contribution history | ✅ **on-chain** | `getProgramAccounts` with memcmp filter at offset 8 |
+| Phantom + Solflare wallet connect | ✅ **works** | Wallet Standard auto-discovery. Errors surface in a top banner with actionable hints. |
+| **Layer 2: `create_project_escrow`** | ✅ **live** | New instruction. PDA at `[b"escrow", project_id]` holds SOL |
+| **Layer 2: `fund_project_escrow`** | ✅ **live** | Anyone can top up any escrow |
+| **Layer 2: `release_milestone`** | ✅ **live** | Oracle-signed; pays `score × lamports_per_score` to contributor. Idempotent via `ReleaseReceipt` PDA |
+| `/pool` page real data | ✅ **on-chain** | Aggregate stats + per-escrow grid via `program.account.projectEscrow.all()` |
+| Fund-escrow UI from `/projects` | ✅ **live** | Modal opens from each card; supports both create and top-up |
+| Homepage live activity feed | ✅ **live** | WebSocket subscription to `ContributionVerified` + `ReputationMinted` |
+| **Layer 0: `register_project`** | ✅ **live** | Project PDA at `[b"project", project_id]`; 9 demo projects seeded on devnet via `pnpm seed:projects` |
+| `/projects` page | ✅ **on-chain** | Reads `program.account.project.all()`. "Register project" button opens a real on-chain register flow. |
+| Project registry coupling | ✅ **strict** | `create_project_escrow` requires the Project PDA to exist — no orphan escrows |
+| IPFS file contents | ⚠️ description-only scoring | Spec design; future work fetches the file for content-specific evaluators |
 
-Bottom line: **the demo works end-to-end as a coherent UX**, with real on-chain artifacts at the deployment layer (program is real, deployable, callable). The two missing real pieces are *real Claude scoring* (one env var) and *real on-chain mint per submission* (uncomment a TODO block + put the IDL where Vercel can find it).
+**Bottom line: every layer of the product is real on-chain.** Layer 0 (project registry), Layer 1 (REP soulbound tokens), and Layer 2 (escrow SOL payouts) are all on-chain accounts you can verify on Solana Explorer. Project → Escrow coupling is strict — you can't fund an escrow for a slug that hasn't been registered.
 
 ---
 

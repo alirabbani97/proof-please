@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useConnection } from "@solana/wallet-adapter-react";
 import { Nav } from "@/components/nav";
 import { WalletGate } from "@/components/wallet-gate";
 import { ContributionCard } from "@/components/contribution-card";
@@ -25,24 +26,25 @@ export default function DashboardPage() {
 
 function Dashboard() {
   const wallet = useWalletPubkey();
+  const { connection } = useConnection();
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [rep, setRep] = useState(0);
   const [refreshNonce, setRefreshNonce] = useState(0);
 
-  // The store is localStorage-backed (only readable on the client); we
-  // deliberately set state inside the effect so server-rendered HTML shows
-  // an empty dashboard and the client hydrates with real data. Replace
-  // with useSyncExternalStore once the data source becomes a real Solana
-  // RPC subscription.
+  // Both reads are now chain-first with localStorage fallback. Track cancel
+  // so the wallet flipping mid-flight doesn't write a stale value.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!wallet) return;
-    setContributions(listContributions(wallet));
-    // getRepBalance is async — it tries the on-chain ATA first, then falls
-    // back to localStorage. Guard against the wallet flipping mid-flight so
-    // we don't write a stale value into state.
     let cancelled = false;
-    getRepBalance(wallet)
+    void listContributions(wallet, { connection })
+      .then((list) => {
+        if (!cancelled) setContributions(list);
+      })
+      .catch(() => {
+        if (!cancelled) setContributions([]);
+      });
+    void getRepBalance(wallet)
       .then((bal) => {
         if (!cancelled) setRep(bal);
       })
@@ -52,7 +54,7 @@ function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [wallet, refreshNonce]);
+  }, [wallet, connection, refreshNonce]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!wallet) return null;

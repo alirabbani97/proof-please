@@ -187,6 +187,14 @@ export interface ScoreResponse {
   verifyTx?: string;
   /** Tx signature of mint_reputation, present when approved AND on-chain settled. */
   mintTx?: string;
+  /**
+   * Tx signature of release_milestone (Layer 2 SOL payout). Present only
+   * when (a) approved, (b) an escrow exists for the project_id, (c) escrow
+   * has sufficient funds, and (d) the milestone hasn't already been released.
+   */
+  releaseMilestoneTx?: string;
+  /** Lamports paid out, if release_milestone fired. */
+  releaseAmountLamports?: number;
 }
 
 interface ErrorResponse {
@@ -258,6 +266,8 @@ export async function POST(
   // not fail the request — the score still returns.
   let verifyTx: string | undefined;
   let mintTx: string | undefined;
+  let releaseMilestoneTx: string | undefined;
+  let releaseAmountLamports: number | undefined;
   const oracleKp = loadOracleKeypair();
   const programId = process.env.NEXT_PUBLIC_PROGRAM_ID;
   if (
@@ -271,19 +281,28 @@ export async function POST(
         programId,
         contributionPubkey: validated.contributionPubkey,
         contributor: validated.contributor,
+        projectId: validated.projectId,
         score: scored.score,
         reasoning: scored.reasoning,
         approved: scored.approved,
       });
       verifyTx = settled.verifyTx;
       mintTx = settled.mintTx;
+      releaseMilestoneTx = settled.releaseMilestoneTx;
+      releaseAmountLamports = settled.releaseAmountLamports;
     } catch (err) {
       console.error("[scorer] on-chain settlement failed:", err);
       // Score still returns; UI can flag "scored, awaiting on-chain confirm".
     }
   }
 
-  return NextResponse.json({ ...scored, verifyTx, mintTx });
+  return NextResponse.json({
+    ...scored,
+    verifyTx,
+    mintTx,
+    releaseMilestoneTx,
+    releaseAmountLamports,
+  });
 }
 
 export async function GET(): Promise<NextResponse> {
@@ -398,6 +417,7 @@ interface SettlementArgs {
   programId: string;
   contributionPubkey: string;
   contributor: string;
+  projectId: string;
   score: number;
   reasoning: string;
   approved: boolean;
@@ -406,6 +426,8 @@ interface SettlementArgs {
 interface SettlementResult {
   verifyTx?: string;
   mintTx?: string;
+  releaseMilestoneTx?: string;
+  releaseAmountLamports?: number;
 }
 
 async function performOnChainSettlement(
@@ -483,5 +505,65 @@ async function performOnChainSettlement(
       .rpc();
   }
 
-  return { verifyTx, mintTx };
+  // 3) release_milestone — Layer 2 SOL payout. Best-effort: only fires when
+  //    approved + an escrow exists for this project_id + escrow has funds +
+  //    not already released. All failure modes are non-fatal — the score
+  //    + REP still return. Each branch logs to Vercel so it's debuggable.
+  let releaseMilestoneTx: string | undefined;
+  let releaseAmountLamports: number | undefined;
+  if (args.approved) {
+    try {
+      const [escrowPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("escrow"), Buffer.from(args.projectId)],
+        programId,
+      );
+      const [releaseReceiptPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("release"), contributionPubkey.toBuffer()],
+        programId,
+      );
+
+      const escrowInfo = await connection.getAccountInfo(
+        escrowPda,
+        "confirmed",
+      );
+      if (escrowInfo) {
+        const releaseTx = await program.methods
+          .releaseMilestone()
+          .accounts({
+            oracleSigner: args.oracleKp.publicKey,
+            oracleState: oracleStatePda,
+            oracle: args.oracleKp.publicKey,
+            escrow: escrowPda,
+            contribution: contributionPubkey,
+            releaseReceipt: releaseReceiptPda,
+            contributor: contributorPubkey,
+            systemProgram: SystemProgram.programId,
+          } as never)
+          .rpc();
+        releaseMilestoneTx = releaseTx;
+        // Compute amount from on-chain escrow state (single source of truth).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const escrow: any = await program.account.projectEscrow.fetch(
+          escrowPda,
+        );
+        releaseAmountLamports =
+          args.score * Number(escrow.lamportsPerScore);
+        console.log("[scorer] released milestone", {
+          tx: releaseTx,
+          amountLamports: releaseAmountLamports,
+          escrow: escrowPda.toBase58(),
+        });
+      } else {
+        console.log("[scorer] no escrow for project — skipping release", {
+          projectId: args.projectId,
+        });
+      }
+    } catch (err) {
+      // Common cases: receipt already exists (already released),
+      // insufficient escrow funds, project_id mismatch. All non-fatal.
+      console.warn("[scorer] release_milestone skipped:", err);
+    }
+  }
+
+  return { verifyTx, mintTx, releaseMilestoneTx, releaseAmountLamports };
 }

@@ -64,4 +64,29 @@ export interface ScoreResult {
    * on-chain settlement succeeded.
    */
   mintTx?: string;
+  /**
+   * Devnet tx signature of release_milestone — the Layer 2 SOL payout.
+   * Present only when an escrow exists for the project, has sufficient
+   * funds, AND the contribution was approved.
+   */
+  releaseMilestoneTx?: string;
+  /**
+   * Lamports paid out via release_milestone, if it fired.
+   */
+  releaseAmountLamports?: number;
+}
+
+export interface ProjectEscrowState {
+  /** Base58 escrow PDA address. */
+  pubkey: string;
+  /** Wallet that created the escrow. */
+  creator: string;
+  /** Oracle pubkey snapshot at creation. */
+  oracle: string;
+  projectId: string;
+  lamportsPerScore: number;
+  totalFunded: number;
+  totalReleased: number;
+  /** Live lamports balance of the PDA (includes rent + unreleased funds). */
+  balanceLamports: number;
 }

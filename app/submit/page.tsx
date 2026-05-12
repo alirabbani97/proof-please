@@ -119,10 +119,14 @@ function SubmitFlow() {
     }
   }
 
+  const mockMode = !chainConfigured();
+
   return (
     <section className="flex-1 px-4 sm:px-6 py-12 sm:py-16">
       <div className="max-w-2xl mx-auto">
         <Header stage={stage} />
+
+        {mockMode && stage.kind === "form" && <MockModeBanner />}
 
         {/* `key` re-mounts on stage change; rep-fade-in animates each
          * stage in. Keeps the demo feeling like a single fluid story. */}
@@ -435,6 +439,8 @@ function ResultPanel({
         submitSig={submitSig}
         verifyTx={result.verifyTx}
         mintTx={result.mintTx}
+        releaseTx={result.releaseMilestoneTx}
+        releaseAmountLamports={result.releaseAmountLamports}
         approved={verified}
       />
 
@@ -452,6 +458,52 @@ function ResultPanel({
           Submit another
         </button>
       </div>
+
+      {verified && (
+        <ShareRow
+          score={result.score}
+          projectId={contribution.projectId}
+          contributionPda={contribution.pubkey}
+        />
+      )}
+    </div>
+  );
+}
+
+function ShareRow({
+  score,
+  projectId,
+  contributionPda,
+}: {
+  score: number;
+  projectId: string;
+  contributionPda: string;
+}) {
+  const tweetText = `Just earned ${score} REP on @ProofPleaseSol for my ${projectId} contribution. AI-scored, soulbound, on-chain on @solana devnet.
+
+Verified ↗ https://explorer.solana.com/address/${contributionPda}?cluster=devnet`;
+  const tweetHref = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+    tweetText,
+  )}`;
+
+  return (
+    <div className="border-t border-white/5 pt-4 flex flex-col sm:flex-row gap-2 items-stretch">
+      <a
+        href={tweetHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex-1 text-center px-4 py-2.5 rounded-md border border-rep-cyan/30 hover:border-rep-cyan text-rep-cyan text-sm transition-colors font-mono uppercase tracking-[0.15em]"
+      >
+        Share on X
+      </a>
+      <button
+        onClick={async () => {
+          await navigator.clipboard.writeText(tweetText);
+        }}
+        className="flex-1 px-4 py-2.5 rounded-md border border-white/15 hover:border-rep-fg text-sm transition-colors font-mono uppercase tracking-[0.15em] text-rep-muted hover:text-rep-fg"
+      >
+        Copy summary
+      </button>
     </div>
   );
 }
@@ -467,15 +519,23 @@ function OnChainArtifacts({
   submitSig,
   verifyTx,
   mintTx,
+  releaseTx,
+  releaseAmountLamports,
   approved,
 }: {
   contributionPda: string;
   submitSig: string;
   verifyTx?: string;
   mintTx?: string;
+  releaseTx?: string;
+  releaseAmountLamports?: number;
   approved: boolean;
 }) {
   const realChain = Boolean(verifyTx);
+  const releaseSol =
+    releaseAmountLamports !== undefined
+      ? releaseAmountLamports / 1_000_000_000
+      : undefined;
   return (
     <div className="rounded-2xl border border-white/5 bg-rep-card/30 p-5 space-y-3">
       <div className="flex items-baseline justify-between">
@@ -503,13 +563,27 @@ function OnChainArtifacts({
           missingHint="(scorer in mock mode — set ANTHROPIC_API_KEY + ORACLE_KEYPAIR_JSON on Vercel)"
         />
         <ExplorerRow
-          k="mint tx"
+          k="mint tx (Layer 1)"
           sig={mintTx}
           href={mintTx ? explorerTx(mintTx) : undefined}
           missingHint={
             !approved
               ? "(score below threshold — no SBT minted)"
               : "(awaiting on-chain mint)"
+          }
+        />
+        <ExplorerRow
+          k={
+            releaseSol !== undefined
+              ? `release tx (Layer 2 · +${releaseSol.toFixed(4)} SOL)`
+              : "release tx (Layer 2)"
+          }
+          sig={releaseTx}
+          href={releaseTx ? explorerTx(releaseTx) : undefined}
+          missingHint={
+            !approved
+              ? "(score below threshold — no SOL released)"
+              : "(no escrow funded for this project — Layer 2 inactive)"
           }
         />
         <ExplorerRow
@@ -637,4 +711,25 @@ function randomHex(n: number): string {
     s += chars[Math.floor(Math.random() * chars.length)];
   }
   return s;
+}
+
+function chainConfigured(): boolean {
+  const id = process.env.NEXT_PUBLIC_PROGRAM_ID;
+  return Boolean(id && id !== "11111111111111111111111111111111");
+}
+
+function MockModeBanner() {
+  return (
+    <div className="mb-6 px-4 py-3 border border-rep-amber/30 bg-rep-amber/5 rounded-lg">
+      <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-rep-amber mb-1">
+        mock mode · no chain interaction
+      </p>
+      <p className="text-xs text-rep-muted leading-relaxed">
+        <code className="font-mono text-rep-fg">NEXT_PUBLIC_PROGRAM_ID</code>{" "}
+        isn&apos;t configured. Submissions will use a deterministic local
+        scorer and write to localStorage — useful for demos when offline,
+        but no on-chain transactions will fire.
+      </p>
+    </div>
+  );
 }

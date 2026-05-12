@@ -14,6 +14,180 @@ export type IndiePool = {
   },
   "instructions": [
     {
+      "name": "createProjectEscrow",
+      "docs": [
+        "Anyone can create an escrow for any `project_id`; first caller wins",
+        "(PDA seed = [b\"escrow\", project_id]). The creator can optionally seed",
+        "the escrow with `initial_deposit` lamports in the same tx.",
+        "",
+        "`lamports_per_score` is the per-score-point payout rate stored on",
+        "the escrow. Subsequent `release_milestone` calls multiply this by",
+        "the contribution's score to determine the payout amount."
+      ],
+      "discriminator": [
+        123,
+        82,
+        214,
+        21,
+        239,
+        169,
+        52,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "oracleState",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  97,
+                  99,
+                  108,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "project",
+          "docs": [
+            "Required: the project must already be registered. If you typo the",
+            "slug or it hasn't been registered yet, this fails with",
+            "`AccountNotInitialized` — pointing the user at /projects/register",
+            "before they can fund the escrow."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  106,
+                  101,
+                  99,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "projectId"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "projectId"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "projectId",
+          "type": "string"
+        },
+        {
+          "name": "initialDeposit",
+          "type": "u64"
+        },
+        {
+          "name": "lamportsPerScore",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "fundProjectEscrow",
+      "docs": [
+        "Add more lamports to an existing escrow. Anyone can fund any escrow."
+      ],
+      "discriminator": [
+        113,
+        20,
+        180,
+        77,
+        102,
+        139,
+        151,
+        247
+      ],
+      "accounts": [
+        {
+          "name": "funder",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "escrow.project_id",
+                "account": "projectEscrow"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "initializeOracle",
       "docs": [
         "One-shot init by the deployer. Stores the oracle pubkey and the REP",
@@ -332,6 +506,228 @@ export type IndiePool = {
       "args": []
     },
     {
+      "name": "registerProject",
+      "discriminator": [
+        130,
+        150,
+        121,
+        216,
+        183,
+        225,
+        243,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "project",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  106,
+                  101,
+                  99,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "projectId"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "projectId",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "blurb",
+          "type": "string"
+        },
+        {
+          "name": "art",
+          "type": "string"
+        },
+        {
+          "name": "primaryType",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "releaseMilestone",
+      "docs": [
+        "Oracle-signed: releases `contribution.score * escrow.lamports_per_score`",
+        "from the escrow PDA to the contributor wallet. Idempotency is enforced",
+        "by setting `contribution.released = true` (a separate flag from",
+        "`minted` so REP and SOL payouts are independently trackable)."
+      ],
+      "discriminator": [
+        56,
+        2,
+        199,
+        164,
+        184,
+        108,
+        167,
+        222
+      ],
+      "accounts": [
+        {
+          "name": "oracleSigner",
+          "docs": [
+            "Must equal `oracle_state.oracle`. Enforced by `has_one`. Also pays",
+            "rent for the release_receipt PDA below."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "oracleState",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  97,
+                  99,
+                  108,
+                  101
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle",
+          "relations": [
+            "oracleState"
+          ]
+        },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "escrow.project_id",
+                "account": "projectEscrow"
+              }
+            ]
+          }
+        },
+        {
+          "name": "contribution",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  114,
+                  105,
+                  98,
+                  117,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contribution.contributor",
+                "account": "contribution"
+              },
+              {
+                "kind": "account",
+                "path": "contribution.nonce",
+                "account": "contribution"
+              }
+            ]
+          }
+        },
+        {
+          "name": "releaseReceipt",
+          "docs": [
+            "`init` on the receipt PDA enforces single-release-per-contribution.",
+            "Second call → \"account already in use\" → instruction aborts."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  108,
+                  101,
+                  97,
+                  115,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contribution"
+              }
+            ]
+          }
+        },
+        {
+          "name": "contributor",
+          "docs": [
+            "deserialized as it's a regular wallet."
+          ],
+          "writable": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "submitContribution",
       "docs": [
         "Contributor opens a new contribution PDA. `nonce` lets the same",
@@ -560,6 +956,45 @@ export type IndiePool = {
         8,
         15
       ]
+    },
+    {
+      "name": "project",
+      "discriminator": [
+        205,
+        168,
+        189,
+        202,
+        181,
+        247,
+        142,
+        19
+      ]
+    },
+    {
+      "name": "projectEscrow",
+      "discriminator": [
+        128,
+        160,
+        162,
+        217,
+        44,
+        90,
+        240,
+        133
+      ]
+    },
+    {
+      "name": "releaseReceipt",
+      "discriminator": [
+        76,
+        104,
+        183,
+        121,
+        145,
+        97,
+        118,
+        212
+      ]
     }
   ],
   "events": [
@@ -587,6 +1022,58 @@ export type IndiePool = {
         49,
         251,
         222
+      ]
+    },
+    {
+      "name": "escrowCreated",
+      "discriminator": [
+        70,
+        127,
+        105,
+        102,
+        92,
+        97,
+        7,
+        173
+      ]
+    },
+    {
+      "name": "escrowFunded",
+      "discriminator": [
+        228,
+        243,
+        166,
+        74,
+        22,
+        167,
+        157,
+        244
+      ]
+    },
+    {
+      "name": "milestoneReleased",
+      "discriminator": [
+        49,
+        225,
+        91,
+        223,
+        34,
+        165,
+        109,
+        181
+      ]
+    },
+    {
+      "name": "projectRegistered",
+      "discriminator": [
+        163,
+        167,
+        240,
+        137,
+        218,
+        249,
+        173,
+        160
       ]
     },
     {
@@ -633,6 +1120,26 @@ export type IndiePool = {
       "code": 6005,
       "name": "unauthorizedOracle",
       "msg": "Signer is not the registered oracle"
+    },
+    {
+      "code": 6006,
+      "name": "invalidPayoutRate",
+      "msg": "Payout rate must be > 0 and <= 100_000_000 lamports per score point"
+    },
+    {
+      "code": 6007,
+      "name": "invalidAmount",
+      "msg": "Amount must be greater than zero"
+    },
+    {
+      "code": 6008,
+      "name": "escrowInsufficientFunds",
+      "msg": "Escrow has insufficient SOL above rent-exempt minimum for this milestone"
+    },
+    {
+      "code": 6009,
+      "name": "escrowProjectMismatch",
+      "msg": "Contribution project_id does not match escrow project_id"
     }
   ],
   "types": [
@@ -763,6 +1270,86 @@ export type IndiePool = {
       }
     },
     {
+      "name": "escrowCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "escrow",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "projectId",
+            "type": "string"
+          },
+          {
+            "name": "initialDeposit",
+            "type": "u64"
+          },
+          {
+            "name": "lamportsPerScore",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "escrowFunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "escrow",
+            "type": "pubkey"
+          },
+          {
+            "name": "funder",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "totalFunded",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "milestoneReleased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "escrow",
+            "type": "pubkey"
+          },
+          {
+            "name": "contribution",
+            "type": "pubkey"
+          },
+          {
+            "name": "contributor",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "totalReleased",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "oracleState",
       "type": {
         "kind": "struct",
@@ -789,6 +1376,170 @@ export type IndiePool = {
           },
           {
             "name": "mintAuthorityBump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "project",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "docs": [
+              "Whoever first registered this slug. Informational at MVP; could",
+              "gate `close_project` or `update_project` in a future iteration."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "projectId",
+            "type": "string"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "blurb",
+            "docs": [
+              "Short pitch / blurb shown on /projects cards."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "art",
+            "docs": [
+              "Visual art ref — usually an emoji or single-char (Brutalist UI uses",
+              "a procedural fallback if empty). Could also hold an IPFS hash for",
+              "a real image once pinning is wired."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "primaryType",
+            "type": "string"
+          },
+          {
+            "name": "createdAt",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "projectEscrow",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "docs": [
+              "Whoever called `create_project_escrow`. Currently informational —",
+              "no instruction is gated on this. Could become the authority for",
+              "\"close_escrow\" in a future iteration."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "oracle",
+            "docs": [
+              "Snapshot of `oracle_state.oracle` at creation time. Used to gate",
+              "`release_milestone` even if the oracle is rotated later."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "projectId",
+            "type": "string"
+          },
+          {
+            "name": "lamportsPerScore",
+            "docs": [
+              "Payout rate: SOL released per score point on `release_milestone`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "totalFunded",
+            "type": "u64"
+          },
+          {
+            "name": "totalReleased",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "projectRegistered",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "project",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "projectId",
+            "type": "string"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "releaseReceipt",
+      "docs": [
+        "Idempotency marker for `release_milestone`. The PDA's existence proves",
+        "the contribution's milestone has already been paid out — a second",
+        "`release_milestone` call hits `init` on this account and fails with",
+        "\"account already in use\". Cleaner than adding a `released` flag to",
+        "the existing `Contribution` struct (which would break deserialization",
+        "of contributions submitted before this upgrade)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "contribution",
+            "type": "pubkey"
+          },
+          {
+            "name": "escrow",
+            "type": "pubkey"
+          },
+          {
+            "name": "contributor",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "releasedAt",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
             "type": "u8"
           }
         ]

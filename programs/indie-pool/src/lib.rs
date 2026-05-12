@@ -24,7 +24,7 @@
 //! program pubkey.
 
 use anchor_lang::prelude::*;
-use anchor_lang::system_program::{create_account, CreateAccount};
+use anchor_lang::system_program::{create_account, transfer, CreateAccount, Transfer};
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_2022::{initialize_mint2, spl_token_2022, InitializeMint2, Token2022},
@@ -41,7 +41,14 @@ pub const MAX_PROJECT_ID: usize = 64;
 pub const MAX_TYPE: usize = 32;
 pub const MAX_IPFS_HASH: usize = 128;
 pub const MAX_DESCRIPTION: usize = 512;
+pub const MAX_PROJECT_NAME: usize = 64;
+pub const MAX_PROJECT_BLURB: usize = 256;
+pub const MAX_PROJECT_ART: usize = 64;
 pub const APPROVAL_THRESHOLD: u8 = 60;
+/// Sanity cap on escrow payout rate (0.1 SOL per score point). Prevents a
+/// fat-finger like "fund 1 SOL escrow with 10 SOL/point rate" from instantly
+/// draining on a single high-score submission.
+pub const MAX_LAMPORTS_PER_SCORE: u64 = 100_000_000;
 
 #[program]
 pub mod indie_pool {
@@ -228,6 +235,226 @@ pub mod indie_pool {
         });
         Ok(())
     }
+
+    // ------------------------------------------------------------------------
+    // Projects (Layer 0): on-chain registry of all projects in the pool
+    //
+    // Before anyone can fund an escrow for a project_id, the project itself
+    // must exist as an on-chain `Project` PDA at seed [b"project", project_id].
+    // First caller wins on the slug. Anyone can register (no creator gating
+    // at this stage). Metadata (name, description, art) lives on-chain so
+    // the UI can render /projects from real data.
+    // ------------------------------------------------------------------------
+
+    pub fn register_project(
+        ctx: Context<RegisterProject>,
+        project_id: String,
+        name: String,
+        blurb: String,
+        art: String,
+        primary_type: String,
+    ) -> Result<()> {
+        require!(project_id.len() <= MAX_PROJECT_ID, IndiePoolError::FieldTooLong);
+        require!(name.len() <= MAX_PROJECT_NAME, IndiePoolError::FieldTooLong);
+        require!(blurb.len() <= MAX_PROJECT_BLURB, IndiePoolError::FieldTooLong);
+        require!(art.len() <= MAX_PROJECT_ART, IndiePoolError::FieldTooLong);
+        require!(primary_type.len() <= MAX_TYPE, IndiePoolError::FieldTooLong);
+
+        let project_bump = ctx.bumps.project;
+        let project_key = ctx.accounts.project.key();
+        let creator_key = ctx.accounts.creator.key();
+        let now = Clock::get()?.unix_timestamp;
+
+        let project = &mut ctx.accounts.project;
+        project.creator = creator_key;
+        project.project_id = project_id.clone();
+        project.name = name.clone();
+        project.blurb = blurb;
+        project.art = art;
+        project.primary_type = primary_type;
+        project.created_at = now;
+        project.bump = project_bump;
+
+        emit!(ProjectRegistered {
+            project: project_key,
+            creator: creator_key,
+            project_id,
+            name,
+        });
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------------
+    // Layer 2: project escrow
+    //
+    // Project creators fund a per-project escrow PDA with SOL. When a
+    // contribution scores >= APPROVAL_THRESHOLD and matches the escrow's
+    // project_id, the oracle releases `score * lamports_per_score` from the
+    // escrow to the contributor. Same trust model as verify_contribution:
+    // oracle signature is the only thing that authorizes payout.
+    //
+    // Escrow creation requires the matching `Project` PDA to exist — strict
+    // coupling so every escrow corresponds to a real registered project.
+    // ------------------------------------------------------------------------
+
+    /// Anyone can create an escrow for any `project_id`; first caller wins
+    /// (PDA seed = [b"escrow", project_id]). The creator can optionally seed
+    /// the escrow with `initial_deposit` lamports in the same tx.
+    ///
+    /// `lamports_per_score` is the per-score-point payout rate stored on
+    /// the escrow. Subsequent `release_milestone` calls multiply this by
+    /// the contribution's score to determine the payout amount.
+    pub fn create_project_escrow(
+        ctx: Context<CreateProjectEscrow>,
+        project_id: String,
+        initial_deposit: u64,
+        lamports_per_score: u64,
+    ) -> Result<()> {
+        require!(project_id.len() <= MAX_PROJECT_ID, IndiePoolError::FieldTooLong);
+        require!(
+            lamports_per_score > 0 && lamports_per_score <= MAX_LAMPORTS_PER_SCORE,
+            IndiePoolError::InvalidPayoutRate,
+        );
+
+        // Snapshot for use after the transfer (which immutably borrows ctx.accounts).
+        let escrow_bump = ctx.bumps.escrow;
+        let escrow_key = ctx.accounts.escrow.key();
+        let creator_key = ctx.accounts.creator.key();
+        let oracle = ctx.accounts.oracle_state.oracle;
+
+        // Transfer first; subsequently take the mutable borrow on escrow to
+        // write state. Doing it the other way trips the borrow checker.
+        if initial_deposit > 0 {
+            transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.creator.to_account_info(),
+                        to: ctx.accounts.escrow.to_account_info(),
+                    },
+                ),
+                initial_deposit,
+            )?;
+        }
+
+        let escrow = &mut ctx.accounts.escrow;
+        escrow.creator = creator_key;
+        escrow.oracle = oracle;
+        escrow.project_id = project_id.clone();
+        escrow.lamports_per_score = lamports_per_score;
+        escrow.total_funded = initial_deposit;
+        escrow.total_released = 0;
+        escrow.bump = escrow_bump;
+
+        emit!(EscrowCreated {
+            escrow: escrow_key,
+            creator: creator_key,
+            project_id,
+            initial_deposit,
+            lamports_per_score,
+        });
+        Ok(())
+    }
+
+    /// Add more lamports to an existing escrow. Anyone can fund any escrow.
+    pub fn fund_project_escrow(
+        ctx: Context<FundProjectEscrow>,
+        amount: u64,
+    ) -> Result<()> {
+        require!(amount > 0, IndiePoolError::InvalidAmount);
+
+        let escrow_key = ctx.accounts.escrow.key();
+        let funder = ctx.accounts.funder.key();
+
+        transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.funder.to_account_info(),
+                    to: ctx.accounts.escrow.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
+        let escrow = &mut ctx.accounts.escrow;
+        escrow.total_funded = escrow.total_funded.saturating_add(amount);
+        let total_funded = escrow.total_funded;
+
+        emit!(EscrowFunded {
+            escrow: escrow_key,
+            funder,
+            amount,
+            total_funded,
+        });
+        Ok(())
+    }
+
+    /// Oracle-signed: releases `contribution.score * escrow.lamports_per_score`
+    /// from the escrow PDA to the contributor wallet. Idempotency is enforced
+    /// by setting `contribution.released = true` (a separate flag from
+    /// `minted` so REP and SOL payouts are independently trackable).
+    pub fn release_milestone(ctx: Context<ReleaseMilestone>) -> Result<()> {
+        // Snapshot + validate. The mutable lamport mutation below conflicts
+        // with holding any other borrow on `escrow`, so compute everything
+        // we need from immutable borrows first.
+        let (amount, contribution_key, contributor_key, escrow_key) = {
+            let c = &ctx.accounts.contribution;
+            require!(
+                matches!(c.status, ContributionStatus::Verified),
+                IndiePoolError::NotVerified,
+            );
+
+            let escrow = &ctx.accounts.escrow;
+            require!(
+                c.project_id == escrow.project_id,
+                IndiePoolError::EscrowProjectMismatch,
+            );
+
+            let amount = (c.score as u64).saturating_mul(escrow.lamports_per_score);
+            require!(amount > 0, IndiePoolError::InvalidAmount);
+
+            let escrow_info = ctx.accounts.escrow.to_account_info();
+            let rent_minimum = Rent::get()?.minimum_balance(escrow_info.data_len());
+            let available = escrow_info.lamports().saturating_sub(rent_minimum);
+            require!(amount <= available, IndiePoolError::EscrowInsufficientFunds);
+
+            (amount, c.key(), c.contributor, escrow.key())
+        };
+
+        // Direct lamport transfer from PDA. The program owns the PDA so it
+        // can mutate `lamports` directly without a system-program CPI.
+        **ctx.accounts.escrow.to_account_info().try_borrow_mut_lamports()? -= amount;
+        **ctx
+            .accounts
+            .contributor
+            .to_account_info()
+            .try_borrow_mut_lamports()? += amount;
+
+        // Persist accounting on the escrow.
+        let escrow = &mut ctx.accounts.escrow;
+        escrow.total_released = escrow.total_released.saturating_add(amount);
+        let total_released = escrow.total_released;
+
+        // Stamp the receipt — its existence is the idempotency guarantee.
+        let receipt_bump = ctx.bumps.release_receipt;
+        let receipt = &mut ctx.accounts.release_receipt;
+        receipt.contribution = contribution_key;
+        receipt.escrow = escrow_key;
+        receipt.contributor = contributor_key;
+        receipt.amount = amount;
+        receipt.released_at = Clock::get()?.unix_timestamp;
+        receipt.bump = receipt_bump;
+
+        emit!(MilestoneReleased {
+            escrow: escrow_key,
+            contribution: contribution_key,
+            contributor: contributor_key,
+            amount,
+            total_released,
+        });
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -378,6 +605,126 @@ pub struct MintReputation<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+#[instruction(project_id: String)]
+pub struct RegisterProject<'info> {
+    #[account(mut)]
+    pub creator: Signer<'info>,
+
+    #[account(
+        init,
+        payer = creator,
+        space = 8 + Project::INIT_SPACE,
+        seeds = [b"project", project_id.as_bytes()],
+        bump,
+    )]
+    pub project: Account<'info, Project>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(project_id: String)]
+pub struct CreateProjectEscrow<'info> {
+    #[account(mut)]
+    pub creator: Signer<'info>,
+
+    #[account(
+        seeds = [b"oracle"],
+        bump = oracle_state.bump,
+    )]
+    pub oracle_state: Account<'info, OracleState>,
+
+    /// Required: the project must already be registered. If you typo the
+    /// slug or it hasn't been registered yet, this fails with
+    /// `AccountNotInitialized` — pointing the user at /projects/register
+    /// before they can fund the escrow.
+    #[account(
+        seeds = [b"project", project_id.as_bytes()],
+        bump = project.bump,
+    )]
+    pub project: Account<'info, Project>,
+
+    #[account(
+        init,
+        payer = creator,
+        space = 8 + ProjectEscrow::INIT_SPACE,
+        seeds = [b"escrow", project_id.as_bytes()],
+        bump,
+    )]
+    pub escrow: Account<'info, ProjectEscrow>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct FundProjectEscrow<'info> {
+    #[account(mut)]
+    pub funder: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"escrow", escrow.project_id.as_bytes()],
+        bump = escrow.bump,
+    )]
+    pub escrow: Account<'info, ProjectEscrow>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ReleaseMilestone<'info> {
+    /// Must equal `oracle_state.oracle`. Enforced by `has_one`. Also pays
+    /// rent for the release_receipt PDA below.
+    #[account(mut)]
+    pub oracle_signer: Signer<'info>,
+
+    #[account(
+        seeds = [b"oracle"],
+        bump = oracle_state.bump,
+        has_one = oracle @ IndiePoolError::UnauthorizedOracle,
+    )]
+    pub oracle_state: Account<'info, OracleState>,
+
+    /// CHECK: Just the oracle pubkey for the has_one check.
+    pub oracle: UncheckedAccount<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"escrow", escrow.project_id.as_bytes()],
+        bump = escrow.bump,
+    )]
+    pub escrow: Account<'info, ProjectEscrow>,
+
+    #[account(
+        seeds = [
+            b"contribution",
+            contribution.contributor.as_ref(),
+            &contribution.nonce.to_le_bytes(),
+        ],
+        bump = contribution.bump,
+    )]
+    pub contribution: Account<'info, Contribution>,
+
+    /// `init` on the receipt PDA enforces single-release-per-contribution.
+    /// Second call → "account already in use" → instruction aborts.
+    #[account(
+        init,
+        payer = oracle_signer,
+        space = 8 + ReleaseReceipt::INIT_SPACE,
+        seeds = [b"release", contribution.key().as_ref()],
+        bump,
+    )]
+    pub release_receipt: Account<'info, ReleaseReceipt>,
+
+    /// CHECK: SOL destination. Must equal `contribution.contributor`; not
+    /// deserialized as it's a regular wallet.
+    #[account(mut, address = contribution.contributor)]
+    pub contributor: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
 // ============================================================================
 // State
 // ============================================================================
@@ -422,6 +769,66 @@ pub enum ContributionStatus {
     Rejected,
 }
 
+#[account]
+#[derive(InitSpace)]
+pub struct Project {
+    /// Whoever first registered this slug. Informational at MVP; could
+    /// gate `close_project` or `update_project` in a future iteration.
+    pub creator: Pubkey,
+    #[max_len(MAX_PROJECT_ID)]
+    pub project_id: String,
+    #[max_len(MAX_PROJECT_NAME)]
+    pub name: String,
+    /// Short pitch / blurb shown on /projects cards.
+    #[max_len(MAX_PROJECT_BLURB)]
+    pub blurb: String,
+    /// Visual art ref — usually an emoji or single-char (Brutalist UI uses
+    /// a procedural fallback if empty). Could also hold an IPFS hash for
+    /// a real image once pinning is wired.
+    #[max_len(MAX_PROJECT_ART)]
+    pub art: String,
+    #[max_len(MAX_TYPE)]
+    pub primary_type: String,
+    pub created_at: i64,
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct ProjectEscrow {
+    /// Whoever called `create_project_escrow`. Currently informational —
+    /// no instruction is gated on this. Could become the authority for
+    /// "close_escrow" in a future iteration.
+    pub creator: Pubkey,
+    /// Snapshot of `oracle_state.oracle` at creation time. Used to gate
+    /// `release_milestone` even if the oracle is rotated later.
+    pub oracle: Pubkey,
+    #[max_len(MAX_PROJECT_ID)]
+    pub project_id: String,
+    /// Payout rate: SOL released per score point on `release_milestone`.
+    pub lamports_per_score: u64,
+    pub total_funded: u64,
+    pub total_released: u64,
+    pub bump: u8,
+}
+
+/// Idempotency marker for `release_milestone`. The PDA's existence proves
+/// the contribution's milestone has already been paid out — a second
+/// `release_milestone` call hits `init` on this account and fails with
+/// "account already in use". Cleaner than adding a `released` flag to
+/// the existing `Contribution` struct (which would break deserialization
+/// of contributions submitted before this upgrade).
+#[account]
+#[derive(InitSpace)]
+pub struct ReleaseReceipt {
+    pub contribution: Pubkey,
+    pub escrow: Pubkey,
+    pub contributor: Pubkey,
+    pub amount: u64,
+    pub released_at: i64,
+    pub bump: u8,
+}
+
 // ============================================================================
 // Events
 // ============================================================================
@@ -447,6 +854,40 @@ pub struct ReputationMinted {
     pub amount: u64,
 }
 
+#[event]
+pub struct EscrowCreated {
+    pub escrow: Pubkey,
+    pub creator: Pubkey,
+    pub project_id: String,
+    pub initial_deposit: u64,
+    pub lamports_per_score: u64,
+}
+
+#[event]
+pub struct EscrowFunded {
+    pub escrow: Pubkey,
+    pub funder: Pubkey,
+    pub amount: u64,
+    pub total_funded: u64,
+}
+
+#[event]
+pub struct MilestoneReleased {
+    pub escrow: Pubkey,
+    pub contribution: Pubkey,
+    pub contributor: Pubkey,
+    pub amount: u64,
+    pub total_released: u64,
+}
+
+#[event]
+pub struct ProjectRegistered {
+    pub project: Pubkey,
+    pub creator: Pubkey,
+    pub project_id: String,
+    pub name: String,
+}
+
 // ============================================================================
 // Errors
 // ============================================================================
@@ -465,4 +906,12 @@ pub enum IndiePoolError {
     AlreadyMinted,
     #[msg("Signer is not the registered oracle")]
     UnauthorizedOracle,
+    #[msg("Payout rate must be > 0 and <= 100_000_000 lamports per score point")]
+    InvalidPayoutRate,
+    #[msg("Amount must be greater than zero")]
+    InvalidAmount,
+    #[msg("Escrow has insufficient SOL above rent-exempt minimum for this milestone")]
+    EscrowInsufficientFunds,
+    #[msg("Contribution project_id does not match escrow project_id")]
+    EscrowProjectMismatch,
 }

@@ -4,6 +4,8 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 
+import { explorerAddr } from "@/lib/explorer";
+
 const WalletMultiButton = dynamic(
   () =>
     import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
@@ -17,8 +19,14 @@ const LINKS = [
   { href: "/pool", label: "Pool" },
 ];
 
+const PLACEHOLDER_PROGRAM_ID = "11111111111111111111111111111111";
+
 export function Nav() {
   const pathname = usePathname();
+  const programId = process.env.NEXT_PUBLIC_PROGRAM_ID;
+  const network = process.env.NEXT_PUBLIC_NETWORK ?? "devnet";
+  const deployed =
+    programId && programId !== PLACEHOLDER_PROGRAM_ID ? programId : null;
   return (
     <header className="flex items-center justify-between gap-4 px-4 sm:px-6 py-4 border-b border-white/5 backdrop-blur-md sticky top-0 bg-rep-bg/85 z-30">
       <Link href="/" className="flex items-center gap-3 group">
@@ -30,7 +38,7 @@ export function Nav() {
             Proof, <span className="text-rep-cyan">please!</span>
           </p>
           <p className="font-mono text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-rep-muted">
-            indie-pool · devnet
+            indie-pool · {network}
           </p>
         </div>
       </Link>
@@ -55,7 +63,22 @@ export function Nav() {
         })}
       </nav>
 
-      <WalletMultiButton />
+      <div className="flex items-center gap-2 sm:gap-3">
+        {deployed && (
+          <a
+            href={explorerAddr(deployed)}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Program: ${deployed}`}
+            className="hidden md:inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em] px-2.5 py-1.5 border border-rep-success/30 text-rep-success hover:bg-rep-success/10 transition-colors"
+          >
+            <span className="size-1.5 rounded-full bg-rep-success animate-pulse" />
+            <span>live · {network}</span>
+            <span className="text-rep-success/60">↗</span>
+          </a>
+        )}
+        <WalletMultiButton />
+      </div>
     </header>
   );
 }

@@ -1,33 +1,46 @@
 /**
- * Mock projects shown on /projects.
+ * Project types + helpers.
  *
- * The /projects page is browse-only — these projects don't have
- * corresponding on-chain escrow accounts in the MVP. The submit
- * flow does call into lib/indie-pool/client.ts so contributions
- * still flow into /dashboard's history correctly.
+ * Projects are now real on-chain `Project` accounts (see `client.ts`
+ * `listProjects`). The `DEMO_SEED` array below is used by the
+ * `scripts/seed-projects.ts` one-shot script to populate devnet with
+ * the same demo set the static list used to hardcode — so the dApp
+ * lands on a populated /projects page even on first run.
+ *
+ * The `Project` shape here is the UI's "rich" view: on-chain fields
+ * plus a few derived defaults (escrow balance, contributor count, etc.).
+ * Use `projectFromOnChain()` to translate.
  */
-import type { ContributionType } from "./types";
+import type { ContributionType, ProjectEscrowState } from "./types";
+import type { OnChainProject } from "./client";
+
+const LAMPORTS_PER_SOL = 1_000_000_000;
 
 export interface Project {
+  /** PDA pubkey of the on-chain Project account. */
   id: string;
-  /** URL-safe slug for future /projects/[slug] dynamic routes. */
+  /** URL-safe slug + on-chain seed. */
   slug: string;
   name: string;
-  /** One-line pitch shown on the card. */
+  /** One-line pitch shown on the card. Maps to on-chain `blurb`. */
   description: string;
   /** Drives the type badge color and the project art generator. */
   primaryType: ContributionType;
-  /** Total SOL locked in the project's escrow PDA (mocked). */
+  /** Emoji or single-char visual marker; empty → procedural art. */
+  art: string;
+  /** Base58 creator wallet from on-chain. */
+  creator: string;
+  /** Live escrow balance in SOL (0 when no escrow funded). */
   escrowSol: number;
-  /** Contributors who have already submitted to this project (mocked). */
+  /** Contributors who have submitted (computed off-chain or 0). */
   contributorCount: number;
-  /** Minimum reputation score required to submit. */
+  /** Minimum reputation score required to submit (UI default). */
   minScoreThreshold: number;
-  /** Aggregate milestone progress, 0-1. */
+  /** total_released / total_funded from chain, 0–1. */
   milestoneProgress: number;
-  /** Studio name for context. */
+  /** Studio name; defaults to "Indie Pool" when not tracked. */
   studio: string;
-  /** ISO date string; "newer" sort uses creation order in this list. */
+  /** ISO date string from on-chain `created_at`. */
   postedAt: string;
 }
 
@@ -97,131 +110,120 @@ export function sortProjects(projects: Project[], by: SortKey): Project[] {
   }
 }
 
-export const PROJECTS: Project[] = [
+/**
+ * Translates an on-chain Project + (optional) escrow into the UI's
+ * "rich" Project view used by ProjectCard and friends. UI fields that
+ * don't exist on-chain (studio, minScoreThreshold) get sensible defaults;
+ * fields that do (escrowSol, milestoneProgress) come from the live escrow.
+ */
+export function projectFromOnChain(
+  oc: OnChainProject,
+  escrow?: ProjectEscrowState | null,
+): Project {
+  const escrowSol = escrow ? escrow.balanceLamports / LAMPORTS_PER_SOL : 0;
+  const funded = escrow ? escrow.totalFunded : 0;
+  const released = escrow ? escrow.totalReleased : 0;
+  return {
+    id: oc.pubkey,
+    slug: oc.projectId,
+    name: oc.name,
+    description: oc.blurb,
+    primaryType: oc.primaryType,
+    art: oc.art,
+    creator: oc.creator,
+    escrowSol,
+    contributorCount: 0, // computed elsewhere if needed
+    minScoreThreshold: 60,
+    milestoneProgress: funded > 0 ? released / funded : 0,
+    studio: "Indie Pool",
+    postedAt: new Date(oc.createdAt * 1000).toISOString(),
+  };
+}
+
+/**
+ * Demo seed data — used by scripts/seed-projects.ts to register the same
+ * 9 demo projects on devnet that the old static list used to render
+ * locally. Run `pnpm exec tsx scripts/seed-projects.ts` to populate.
+ */
+export interface DemoSeed {
+  slug: string;
+  name: string;
+  blurb: string;
+  art: string;
+  primaryType: ContributionType;
+}
+
+export const DEMO_SEED: DemoSeed[] = [
   {
-    id: "p_pixel_forge",
     slug: "pixel-forge-rpg",
     name: "Pixel Forge RPG",
-    description:
+    blurb:
       "Top-down dungeon crawler with procedural biomes and hand-drawn pixel art.",
+    art: "🎨",
     primaryType: "art",
-    escrowSol: 12.0,
-    contributorCount: 7,
-    minScoreThreshold: 70,
-    milestoneProgress: 0.42,
-    studio: "Forge & Spell Studios",
-    postedAt: "2026-04-30",
   },
   {
-    id: "p_subterranean",
     slug: "subterranean",
     name: "Subterranean",
-    description:
+    blurb:
       "Atmospheric horror in an abandoned arcology. Looking for ambient soundscape composers.",
+    art: "🌑",
     primaryType: "music",
-    escrowSol: 4.5,
-    contributorCount: 3,
-    minScoreThreshold: 75,
-    milestoneProgress: 0.18,
-    studio: "Long Shadow Games",
-    postedAt: "2026-05-06",
   },
   {
-    id: "p_echoes_atlantis",
     slug: "echoes-of-atlantis",
     name: "Echoes of Atlantis",
-    description:
+    blurb:
       "Underwater exploration RPG. Need writers for environmental storytelling and dialogue.",
+    art: "🌊",
     primaryType: "writing",
-    escrowSol: 6.0,
-    contributorCount: 5,
-    minScoreThreshold: 65,
-    milestoneProgress: 0.55,
-    studio: "Bathysphere Collective",
-    postedAt: "2026-05-02",
   },
   {
-    id: "p_solar_flare",
     slug: "solar-flare-shaders",
     name: "Solar Flare Shaders",
-    description:
+    blurb:
       "Open-source GLSL shader pack for sci-fi indies. Plasma, parallax stars, holographic UI.",
+    art: "☀️",
     primaryType: "code",
-    escrowSol: 8.0,
-    contributorCount: 4,
-    minScoreThreshold: 72,
-    milestoneProgress: 0.31,
-    studio: "Helios Open Engine",
-    postedAt: "2026-05-08",
   },
   {
-    id: "p_cyberpunk_cube",
     slug: "cyberpunk-cube",
     name: "Cyberpunk Cube",
-    description:
+    blurb:
       "Modular 3D environment kit. Buildings, signage, neon clutter for cyberpunk indies.",
+    art: "🟪",
     primaryType: "3d",
-    escrowSol: 9.5,
-    contributorCount: 6,
-    minScoreThreshold: 68,
-    milestoneProgress: 0.73,
-    studio: "Cube Foundry",
-    postedAt: "2026-04-25",
   },
   {
-    id: "p_bug_hunters",
     slug: "bug-hunters-anonymous",
     name: "Bug Hunters Anonymous",
-    description:
+    blurb:
       "Pre-launch QA pool for an upcoming roguelike. Reproducible bug reports earn rewards.",
+    art: "🐛",
     primaryType: "testing",
-    escrowSol: 3.0,
-    contributorCount: 11,
-    minScoreThreshold: 60,
-    milestoneProgress: 0.66,
-    studio: "Crit-Hit Indie",
-    postedAt: "2026-05-09",
   },
   {
-    id: "p_neon_brawler",
     slug: "neon-brawler",
     name: "Neon Brawler",
-    description:
+    blurb:
       "1v1 fighting game with combo trees driven by behavior-tree AI. Combat AI engineers wanted.",
+    art: "⚡",
     primaryType: "code",
-    escrowSol: 7.0,
-    contributorCount: 2,
-    minScoreThreshold: 80,
-    milestoneProgress: 0.12,
-    studio: "Static Shock Studios",
-    postedAt: "2026-05-09",
   },
   {
-    id: "p_twilight_atelier",
     slug: "twilight-atelier",
     name: "Twilight Atelier",
-    description:
+    blurb:
       "Otome visual novel set in 1920s Paris. Character portraits and CG illustration commissions.",
+    art: "🌹",
     primaryType: "art",
-    escrowSol: 5.5,
-    contributorCount: 4,
-    minScoreThreshold: 70,
-    milestoneProgress: 0.48,
-    studio: "Velvet Arc",
-    postedAt: "2026-04-28",
   },
   {
-    id: "p_lullabies_void",
     slug: "lullabies-for-the-void",
     name: "Lullabies for the Void",
-    description:
+    blurb:
       "Cosmic horror walking sim. Looking for orchestral and choral compositions for key scenes.",
+    art: "🎼",
     primaryType: "music",
-    escrowSol: 4.0,
-    contributorCount: 2,
-    minScoreThreshold: 78,
-    milestoneProgress: 0.05,
-    studio: "Nightside Recordings",
-    postedAt: "2026-05-07",
   },
 ];
