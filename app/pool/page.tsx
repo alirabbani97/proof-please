@@ -77,19 +77,17 @@ function Pool() {
 
   return (
     <>
-      <PreviewBanner anyLive={escrows.length > 0} />
-
       <header>
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-rep-purple mb-2">
-          project pool · layer 2 escrows
+          project escrows
         </p>
         <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-          Real on-chain escrows
+          On-chain reward pools
         </h1>
-        <p className="text-rep-muted text-sm mt-3 max-w-xl leading-relaxed">
+        <p className="text-rep-fg/75 text-sm mt-3 max-w-xl leading-relaxed">
           Anyone can fund an escrow for any project. The AI scorer
-          automatically releases SOL to verified contributors when their
-          contribution&apos;s project_id matches an existing escrow.
+          automatically releases SOL to verified contributors when a scored
+          contribution matches a funded project.
         </p>
       </header>
 
@@ -166,39 +164,6 @@ function Pool() {
 // May be undefined if the escrow's project_id has no matching Project (which
 // after the strict-coupling upgrade shouldn't happen, but defensive guard).
 
-function PreviewBanner({ anyLive }: { anyLive: boolean }) {
-  return (
-    <div
-      className={`px-4 py-4 rounded-lg border space-y-2 ${
-        anyLive
-          ? "border-rep-success/30 bg-rep-success/5"
-          : "border-rep-purple/30 bg-rep-purple/5"
-      }`}
-    >
-      <p
-        className={`font-mono text-[10px] uppercase tracking-[0.25em] ${
-          anyLive ? "text-rep-success" : "text-rep-purple"
-        }`}
-      >
-        {anyLive ? "layer 2 · live on devnet" : "layer 2 · escrow rewards"}
-      </p>
-      <p className="text-xs text-rep-muted leading-relaxed">
-        Project creators fund a Solana escrow PDA. The AI scorer&apos;s
-        verification of contributions unlocks proportional SOL payouts to
-        verified contributors — milestone-gated, trustless, auditable
-        on-chain. Reputation (Layer 1) is earned via{" "}
-        <span className="text-rep-fg">non-transferable Soulbound Tokens</span>;
-        SOL (Layer 2) flows on top of that signal.
-      </p>
-      <p className="text-[11px] text-rep-muted/70 italic">
-        {anyLive
-          ? "Numbers below are read from real on-chain ProjectEscrow accounts on devnet. Click any escrow to view it on Solana Explorer."
-          : "No escrows have been created yet — once someone funds one, this page lights up with real on-chain data."}
-      </p>
-    </div>
-  );
-}
-
 function SolStat({
   label,
   lamports,
@@ -217,14 +182,14 @@ function SolStat({
       : "text-rep-purple";
   return (
     <div className="rounded-xl border border-white/5 bg-rep-card/40 p-5">
-      <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-rep-muted mb-3">
+      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-rep-fg/65 mb-3 font-semibold">
         {label}
       </p>
       <p className="flex items-baseline gap-2">
-        <span className={`text-3xl font-semibold tabular-nums ${color}`}>
+        <span className={`text-3xl font-bold tabular-nums ${color}`}>
           {sol.toFixed(3)}
         </span>
-        <span className="font-mono text-xs text-rep-muted">SOL</span>
+        <span className="font-mono text-sm text-rep-fg/55 font-medium">SOL</span>
       </p>
     </div>
   );
@@ -255,21 +220,22 @@ function EscrowCard({
           style={{ backgroundColor: accentVar }}
         />
         <div className="flex-1 min-w-0">
-          <h3 className="font-medium tracking-tight truncate">
+          <h3 className="font-semibold tracking-tight truncate text-base">
             {projectName}
           </h3>
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-rep-muted mt-0.5">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-rep-fg/55 mt-0.5">
             {project?.studio ?? "external project"}
           </p>
         </div>
       </header>
 
-      <div className="grid grid-cols-3 gap-2 font-mono text-[10px] uppercase tracking-[0.15em]">
-        <Cell label="balance" v={`${balanceSol.toFixed(3)} SOL`} />
-        <Cell label="released" v={`${releasedSol.toFixed(3)} SOL`} />
+      <div className="grid grid-cols-3 gap-2">
+        <Cell label="Balance" v={`${balanceSol.toFixed(3)}`} suffix="SOL" highlight="amber" />
+        <Cell label="Released" v={`${releasedSol.toFixed(3)}`} suffix="SOL" highlight="success" />
         <Cell
-          label="rate"
-          v={`${escrow.lamportsPerScore.toLocaleString()} lpp`}
+          label="Rate"
+          v={escrow.lamportsPerScore.toLocaleString()}
+          suffix="lpp"
         />
       </div>
 
@@ -278,14 +244,14 @@ function EscrowCard({
           href={explorerAddr(escrow.pubkey)}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-mono text-[10px] text-rep-cyan/70 hover:text-rep-cyan transition-colors truncate"
+          className="font-mono text-[11px] text-rep-cyan hover:underline transition-colors truncate"
         >
           <TruncatedKey pubkey={escrow.pubkey} /> ↗
         </a>
         <button
           onClick={onFund}
           disabled={!project}
-          className="font-mono text-[10px] uppercase tracking-[0.15em] px-3 py-1.5 border border-rep-amber/40 text-rep-amber hover:bg-rep-amber/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="font-mono text-[10px] uppercase tracking-[0.18em] font-semibold px-3 py-1.5 border border-rep-amber/50 text-rep-amber hover:bg-rep-amber/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           Top up
         </button>
@@ -294,11 +260,34 @@ function EscrowCard({
   );
 }
 
-function Cell({ label, v }: { label: string; v: string }) {
+function Cell({
+  label,
+  v,
+  suffix,
+  highlight,
+}: {
+  label: string;
+  v: string;
+  suffix?: string;
+  highlight?: "amber" | "success";
+}) {
+  const valueColor =
+    highlight === "amber"
+      ? "text-rep-amber"
+      : highlight === "success"
+      ? "text-rep-success"
+      : "text-rep-fg";
   return (
     <div className="bg-rep-bg/60 border border-white/5 rounded px-2.5 py-2">
-      <div className="text-rep-muted text-[9px]">{label}</div>
-      <div className="text-rep-fg text-[11px] mt-0.5 tabular-nums">{v}</div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-rep-fg/55 font-semibold">
+        {label}
+      </div>
+      <div className={`text-sm mt-0.5 tabular-nums font-mono font-semibold ${valueColor}`}>
+        {v}
+        {suffix && (
+          <span className="text-rep-fg/45 text-[10px] ml-1 font-normal">{suffix}</span>
+        )}
+      </div>
     </div>
   );
 }

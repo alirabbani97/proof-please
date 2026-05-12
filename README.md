@@ -2,7 +2,11 @@
 
 **AI-verified, soulbound reputation infrastructure for creators on Solana.**
 
+<<<<<<< HEAD
 A contributor submits creative work — code, art, music, 3D, writing, testing. An AI agent (Claude Sonnet 4.6) scores it 0–100 against a calibrated rubric. The score mints as a non-transferable Token-2022 token to the contributor's wallet, and if the project has a funded escrow, real SOL also flows to them — all in a single oracle-signed transaction. Every project, score, token, and payout is a first-class on-chain Solana account.
+=======
+> Codename: **Indie Pool**
+>>>>>>> 797c48a7290d55f670fa3ee81f1dd62e5438b165
 
 > Codename: **Indie Pool**.
 

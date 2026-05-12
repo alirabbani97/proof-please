@@ -34,9 +34,11 @@ import type { Project } from "@/lib/indie-pool/projects";
 import { TYPE_COLOR } from "@/lib/indie-pool/projects";
 import { explorerAddr, explorerTx, truncateSig } from "@/lib/explorer";
 
-const WalletMultiButton = dynamic(
+const ConnectWalletButton = dynamic(
   () =>
-    import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
+    import("@/components/connect-wallet-button").then(
+      (m) => m.ConnectWalletButton,
+    ),
   { ssr: false },
 );
 
@@ -251,8 +253,8 @@ function ConnectGate() {
         The contribution PDA is signed by your wallet. Phantom or Solflare
         on devnet — grab faucet SOL if your wallet is empty.
       </p>
-      <div className="pt-2">
-        <WalletMultiButton />
+      <div className="pt-2 flex justify-center">
+        <ConnectWalletButton />
       </div>
     </div>
   );
@@ -307,7 +309,7 @@ function FormStage({
 
       <Field
         label="Description"
-        hint="The AI scorer reads this directly. Be specific about what you built."
+        hint="Be specific — this is the ONLY thing the AI scorer reads."
       >
         <textarea
           ref={firstFieldRef}
@@ -327,7 +329,7 @@ function FormStage({
       <Field
         label="IPFS hash"
         optional
-        hint="Paste a CID or leave blank — we'll generate a placeholder for the demo."
+        hint="Tamper-proof link to your file. The AI does NOT read the file — only your description above."
       >
         <input
           value={ipfsHash}
@@ -438,22 +440,22 @@ function ResultState({
           missingHint="(set ANTHROPIC_API_KEY + ORACLE_KEYPAIR_JSON)"
         />
         <SlideoverArtifactRow
-          label="mint tx (L1)"
+          label="REP mint tx"
           sig={result.mintTx}
           kind="tx"
           missingHint={
             !passed
-              ? "(below threshold — no SBT)"
+              ? "(below threshold — no REP)"
               : "(awaiting on-chain mint)"
           }
         />
         <SlideoverArtifactRow
           label={
             result.releaseAmountLamports !== undefined
-              ? `release tx (L2 · +${(
+              ? `SOL payout tx (+${(
                   result.releaseAmountLamports / 1_000_000_000
                 ).toFixed(4)} SOL)`
-              : "release tx (L2)"
+              : "SOL payout tx"
           }
           sig={result.releaseMilestoneTx}
           kind="tx"
@@ -502,11 +504,11 @@ function SlideoverArtifactRow({
 }) {
   if (!sig) {
     return (
-      <div className="flex items-baseline justify-between gap-3 font-mono text-[11px]">
-        <span className="text-rep-muted uppercase tracking-[0.15em] text-[10px] shrink-0">
+      <div className="flex items-baseline justify-between gap-3 font-mono py-0.5">
+        <span className="uppercase tracking-[0.15em] text-[11px] text-rep-fg/70 font-semibold shrink-0">
           {label}
         </span>
-        <span className="text-rep-muted italic text-right truncate">
+        <span className="text-rep-amber/90 text-right text-[11px] font-medium truncate">
           {missingHint ?? "—"}
         </span>
       </div>
@@ -518,14 +520,14 @@ function SlideoverArtifactRow({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-baseline justify-between gap-3 font-mono text-[11px] hover:bg-rep-cyan/5 -mx-1.5 px-1.5 py-0.5 rounded transition-colors group"
+      className="flex items-baseline justify-between gap-3 font-mono hover:bg-rep-cyan/5 -mx-1.5 px-1.5 py-0.5 rounded transition-colors group"
     >
-      <span className="text-rep-muted uppercase tracking-[0.15em] text-[10px] shrink-0">
+      <span className="uppercase tracking-[0.15em] text-[11px] text-rep-fg/70 font-semibold shrink-0">
         {label}
       </span>
-      <span className="text-rep-cyan group-hover:underline truncate text-right">
+      <span className="text-rep-cyan group-hover:underline truncate text-right text-[12px] font-semibold">
         {truncateSig(sig)}{" "}
-        <span className="text-rep-cyan/60" aria-hidden>
+        <span className="text-rep-cyan/70" aria-hidden>
           ↗
         </span>
       </span>

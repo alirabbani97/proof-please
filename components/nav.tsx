@@ -1,14 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 
 import { explorerAddr } from "@/lib/explorer";
 
-const WalletMultiButton = dynamic(
+// Use our own button (always visible, browser-portable). The
+// `WalletMultiButton` from wallet-adapter-react-ui renders as `transparent`
+// on Edge when no wallet is detected, which makes it invisible on the dark
+// nav. Same modal + UX underneath; just guaranteed-visible chrome.
+const ConnectWalletButton = dynamic(
   () =>
-    import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
+    import("@/components/connect-wallet-button").then(
+      (m) => m.ConnectWalletButton,
+    ),
   { ssr: false },
 );
 
@@ -30,9 +37,14 @@ export function Nav() {
   return (
     <header className="flex items-center justify-between gap-4 px-4 sm:px-6 py-4 border-b border-white/5 backdrop-blur-md sticky top-0 bg-rep-bg/85 z-30">
       <Link href="/" className="flex items-center gap-3 group">
-        <div className="size-8 rounded bg-gradient-to-br from-rep-cyan to-rep-purple grid place-items-center font-mono text-xs text-black font-bold transition-transform group-hover:scale-105">
-          PP
-        </div>
+        <Image
+          src="/indie-pool-logo.png"
+          alt="Proof, please! logo"
+          width={1536}
+          height={1024}
+          priority
+          className="h-9 w-auto object-contain transition-transform group-hover:scale-105"
+        />
         <div className="leading-tight">
           <p className="text-sm sm:text-base font-semibold tracking-tight">
             Proof, <span className="text-rep-cyan">please!</span>
@@ -77,7 +89,7 @@ export function Nav() {
             <span className="text-rep-success/60">↗</span>
           </a>
         )}
-        <WalletMultiButton />
+        <ConnectWalletButton />
       </div>
     </header>
   );

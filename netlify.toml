@@ -1,0 +1,38 @@
+# Netlify deploy config for Proof, please!
+#
+# The @netlify/plugin-nextjs is auto-installed when Next.js is detected, but
+# we list it explicitly so the build is reproducible and the function bundler
+# config below has a known plugin context.
+
+[build]
+  command = "pnpm build"
+  publish = ".next"
+
+[build.environment]
+  # Skip Next.js telemetry — quieter logs, fewer requests during build.
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# --- Function bundling ----------------------------------------------------
+#
+# Anchor + Solana SDKs pull in CJS packages that import nested ESM (`uuid`
+# under `rpc-websockets`). The bundler can't safely tree-shake these — it
+# triggers `ERR_REQUIRE_ESM` at function cold start. Mark them as external
+# so Netlify copies the whole package tree intact and Node's resolver does
+# the work at runtime. Combined with the `rpc-websockets>uuid` pnpm
+# override in package.json, this gives Solana SDKs a CJS-clean dep tree.
+#
+# Also include the on-chain IDL JSON + types so the /api/score route can
+# resolve them via `@/lib/idl/indie_pool.json` after bundling.
+[functions]
+  external_node_modules = [
+    "@coral-xyz/anchor",
+    "@solana/web3.js",
+    "@solana/spl-token",
+    "@anthropic-ai/sdk",
+    "rpc-websockets",
+    "bs58",
+  ]
+  included_files = ["lib/idl/**"]

@@ -258,7 +258,7 @@ function Form(props: {
       <Field
         label="IPFS hash"
         optional
-        hint="Paste a CID or leave blank — we'll generate a placeholder for the demo."
+        hint="Tamper-proof link to your file. The AI scorer does NOT read the file content — only your description below."
       >
         <input
           value={props.ipfsHash}
@@ -271,7 +271,7 @@ function Form(props: {
 
       <Field
         label="Description"
-        hint="What did you build? The AI scorer reads this directly."
+        hint="What did you build? Be specific — this is the ONLY thing the AI scorer reads."
       >
         <textarea
           value={props.description}
@@ -402,23 +402,25 @@ function ResultPanel({
         />
         <div className="text-center max-w-md">
           <p
-            className={`font-mono text-xs uppercase tracking-[0.3em] mb-2 ${
+            className={`font-mono text-xs uppercase tracking-[0.3em] mb-3 font-bold ${
               verified ? "text-rep-success" : "text-rep-danger"
             }`}
           >
             {verified ? "approved · sbt minted" : "below threshold"}
           </p>
-          <p className="text-sm text-rep-muted leading-relaxed">
+          <p className="text-[15px] text-rep-fg/90 leading-relaxed">
             {result.reasoning}
           </p>
         </div>
         {verified && (
-          <div className="flex items-center gap-3 text-sm font-mono">
-            <span className="text-rep-muted">+</span>
-            <span className="text-rep-cyan font-semibold text-lg">
+          <div className="flex items-center gap-2 sm:gap-3 font-mono px-4 py-2 border border-rep-cyan/30 bg-rep-cyan/5 rounded">
+            <span className="text-rep-cyan/70 text-lg font-bold">+</span>
+            <span className="text-rep-cyan font-bold text-xl tabular-nums">
               {result.score} REP
             </span>
-            <span className="text-rep-muted">minted to your wallet</span>
+            <span className="text-rep-fg/70 text-xs uppercase tracking-[0.15em]">
+              minted to your wallet
+            </span>
           </div>
         )}
       </div>
@@ -563,27 +565,27 @@ function OnChainArtifacts({
           missingHint="(scorer in mock mode — set ANTHROPIC_API_KEY + ORACLE_KEYPAIR_JSON on Vercel)"
         />
         <ExplorerRow
-          k="mint tx (Layer 1)"
+          k="REP mint tx"
           sig={mintTx}
           href={mintTx ? explorerTx(mintTx) : undefined}
           missingHint={
             !approved
-              ? "(score below threshold — no SBT minted)"
+              ? "(score below threshold — no REP minted)"
               : "(awaiting on-chain mint)"
           }
         />
         <ExplorerRow
           k={
             releaseSol !== undefined
-              ? `release tx (Layer 2 · +${releaseSol.toFixed(4)} SOL)`
-              : "release tx (Layer 2)"
+              ? `SOL payout tx (+${releaseSol.toFixed(4)} SOL)`
+              : "SOL payout tx"
           }
           sig={releaseTx}
           href={releaseTx ? explorerTx(releaseTx) : undefined}
           missingHint={
             !approved
-              ? "(score below threshold — no SOL released)"
-              : "(no escrow funded for this project — Layer 2 inactive)"
+              ? "(score below threshold — no SOL paid)"
+              : "(no escrow funded for this project)"
           }
         />
         <ExplorerRow
@@ -609,11 +611,11 @@ function ExplorerRow({
 }) {
   if (!sig || !href) {
     return (
-      <div className="flex items-baseline justify-between gap-4 font-mono text-xs">
-        <span className="text-rep-muted uppercase tracking-[0.15em] text-[10px] shrink-0">
+      <div className="flex items-baseline justify-between gap-4 font-mono py-1">
+        <span className="uppercase tracking-[0.15em] text-[11px] text-rep-fg/70 font-semibold shrink-0">
           {k}
         </span>
-        <span className="text-rep-muted text-right text-[11px] italic">
+        <span className="text-rep-amber/90 text-right text-[11px] font-medium">
           {missingHint ?? "—"}
         </span>
       </div>
@@ -624,14 +626,14 @@ function ExplorerRow({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-baseline justify-between gap-4 font-mono text-xs hover:bg-rep-cyan/5 -mx-2 px-2 py-0.5 rounded transition-colors group"
+      className="flex items-baseline justify-between gap-4 font-mono hover:bg-rep-cyan/5 -mx-2 px-2 py-1 rounded transition-colors group"
     >
-      <span className="text-rep-muted uppercase tracking-[0.15em] text-[10px] shrink-0">
+      <span className="uppercase tracking-[0.15em] text-[11px] text-rep-fg/70 font-semibold shrink-0">
         {k}
       </span>
-      <span className="text-rep-cyan group-hover:underline truncate text-right">
+      <span className="text-rep-cyan group-hover:underline truncate text-right text-sm font-semibold">
         {truncateSig(sig)}{" "}
-        <span className="text-rep-cyan/60" aria-hidden>
+        <span className="text-rep-cyan/70" aria-hidden>
           ↗
         </span>
       </span>

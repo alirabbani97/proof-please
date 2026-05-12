@@ -151,7 +151,7 @@ export function FundEscrowModal({
       <div className="relative max-w-md w-full bg-rep-card border border-white/10 rounded-lg p-6 sm:p-7 shadow-2xl">
         <header className="mb-5">
           <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-rep-amber mb-1">
-            layer 2 · escrow
+            project · reward pool
           </p>
           <h2 className="text-xl font-semibold tracking-tight">
             {isCreate ? "Fund a new escrow" : "Top up escrow"}
@@ -283,8 +283,12 @@ export function FundEscrowModal({
 function Stat({ label, v }: { label: string; v: string }) {
   return (
     <div className="bg-rep-bg/60 border border-white/5 rounded px-2.5 py-2">
-      <div className="text-rep-muted text-[9px]">{label}</div>
-      <div className="text-rep-fg text-[11px] mt-0.5">{v}</div>
+      <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-rep-fg/60 font-semibold">
+        {label}
+      </div>
+      <div className="text-rep-fg text-sm mt-1 font-mono font-semibold tabular-nums">
+        {v}
+      </div>
     </div>
   );
 }

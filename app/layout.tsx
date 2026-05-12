@@ -16,8 +16,31 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Proof, please! — Indie Pool",
   description:
-    "Decentralized contribution & reputation infrastructure for indie game ecosystems. Built on Solana, scored by AI.",
+    "AI-verified, soulbound reputation infrastructure for creators on Solana. Submit creative work, get AI-scored, earn non-transferable on-chain reputation + automatic SOL payouts.",
   applicationName: "Proof, please!",
+  // Next.js auto-uses app/icon.png and app/favicon.ico — no manual `icons`
+  // field needed. Listing OG + Twitter cards so the logo shows up when the
+  // dApp URL is pasted in Discord / Twitter / Slack previews.
+  openGraph: {
+    title: "Proof, please!",
+    description:
+      "AI-verified, soulbound reputation infrastructure for creators on Solana.",
+    images: [
+      {
+        url: "/indie-pool-logo.png",
+        width: 1536,
+        height: 1024,
+        alt: "Proof, please! — Indie Pool",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Proof, please!",
+    description:
+      "AI-verified, soulbound reputation infrastructure for creators on Solana.",
+    images: ["/indie-pool-logo.png"],
+  },
 };
 
 export default function RootLayout({

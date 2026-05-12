@@ -4,15 +4,17 @@ import dynamic from "next/dynamic";
 import { useWallet } from "@solana/wallet-adapter-react";
 import type { ReactNode } from "react";
 
-const WalletMultiButton = dynamic(
+const ConnectWalletButton = dynamic(
   () =>
-    import("@solana/wallet-adapter-react-ui").then((m) => m.WalletMultiButton),
+    import("@/components/connect-wallet-button").then(
+      (m) => m.ConnectWalletButton,
+    ),
   { ssr: false },
 );
 
 /**
  * Render `children` only when a wallet is connected; otherwise show a
- * connect prompt with a `WalletMultiButton`.
+ * connect prompt with a `ConnectWalletButton`.
  */
 export function WalletGate({
   children,
@@ -33,11 +35,13 @@ export function WalletGate({
         <h2 className="text-2xl font-semibold tracking-tight">
           {prompt ?? "Connect a wallet to continue"}
         </h2>
-        <p className="text-rep-muted text-sm leading-relaxed">
-          Indie Pool runs on Solana devnet. Use Phantom or Solflare and grab
-          some test SOL from the faucet if your wallet is empty.
+        <p className="text-rep-fg/70 text-sm leading-relaxed">
+          Indie Pool runs on Solana devnet. Install Phantom or Solflare if you
+          don&apos;t have one, then come back and click below.
         </p>
-        <WalletMultiButton />
+        <div className="flex justify-center">
+          <ConnectWalletButton />
+        </div>
       </div>
     </div>
   );
