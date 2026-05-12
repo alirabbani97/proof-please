@@ -461,6 +461,20 @@ async function performOnChainSettlement(
   const reasoningHash = createHash("sha256").update(args.reasoning).digest();
 
   const rpcUrl = process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
+  // Log a redacted snapshot of the RPC URL so we can see what the function
+  // is actually pointed at without leaking the api-key. If this shows
+  // mainnet (when we want devnet), or `hasKey: false`, or any whitespace
+  // in the hostname, that's the bug.
+  {
+    const redactedRpc = rpcUrl.replace(/api-key=[^&]*/, "api-key=***");
+    console.log("[scorer] using RPC", {
+      redactedRpc,
+      length: rpcUrl.length,
+      hasKey: rpcUrl.includes("api-key="),
+      startsWithHttps: rpcUrl.startsWith("https://"),
+      hasWhitespace: /\s/.test(rpcUrl),
+    });
+  }
   const connection = new Connection(rpcUrl, "confirmed");
   const provider = new AnchorProvider(
     connection,

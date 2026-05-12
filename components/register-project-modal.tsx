@@ -129,9 +129,9 @@ export function RegisterProjectModal({
       aria-modal="true"
       aria-label="Register a new project"
     >
-      <button
-        aria-label="Close"
-        onClick={onClose}
+      {/* Backdrop — dim only; click does NOT close. Use Cancel or Esc. */}
+      <div
+        aria-hidden="true"
         className="absolute inset-0 bg-black/70 rep-overlay-in"
       />
 

@@ -160,10 +160,10 @@ export function SubmitSlideover({ project, onClose }: SubmitSlideoverProps) {
       aria-modal="true"
       aria-label={`Submit a contribution to ${project.name}`}
     >
-      {/* Backdrop */}
-      <button
-        aria-label="Close panel"
-        onClick={onClose}
+      {/* Backdrop — dim only; click does NOT close (prevents accidental
+       * dismissal mid-form). Use the X button in the header or press Esc. */}
+      <div
+        aria-hidden="true"
         className="absolute inset-0 bg-black/60 rep-overlay-in"
       />
 
