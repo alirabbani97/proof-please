@@ -2,193 +2,149 @@
 
 **AI-verified, soulbound reputation infrastructure for creators on Solana.**
 
-> Hackathon MVP · May 2026 · by Brutales XYZ
-> Codename: **Indie Pool**
+A contributor submits creative work — code, art, music, 3D, writing, testing. An AI agent (Claude Sonnet 4.6) scores it 0–100 against a calibrated rubric. The score mints as a non-transferable Token-2022 token to the contributor's wallet, and if the project has a funded escrow, real SOL also flows to them — all in a single oracle-signed transaction. Every project, score, token, and payout is a first-class on-chain Solana account.
 
-Submit creative work — code, art, music, 3D, writing — get it AI-scored by Claude, and earn non-transferable on-chain reputation as Soulbound Tokens. When a project funds an escrow, verified contributions also unlock real SOL payouts. **Two layers, one signal.**
-
-```
-Layer 1 — Reputation (soulbound)    score → REP token (Token-2022 NonTransferable)
-Layer 2 — Rewards (fungible SOL)    score → escrow payout (PDA-held SOL)
-```
-
-Both layers settle in a single oracle-signed transaction off the AI verdict.
+> Codename: **Indie Pool**.
 
 ---
 
-## Live deployment
+## Live on devnet
 
-| | Address |
+| | |
 |---|---|
-| **Anchor program (devnet)** | [`EvgHfdx5xyTNoPnaHwDtySdAtMUYGcMz9nwCiwMLi9sn`](https://explorer.solana.com/address/EvgHfdx5xyTNoPnaHwDtySdAtMUYGcMz9nwCiwMLi9sn?cluster=devnet) |
-| **Frontend** | Deployed on Vercel — see project URL in repo description |
-
-Open the dApp, scroll past the hero, and you'll see a **live activity feed** subscribed via WebSocket to the program's `ContributionVerified` and `ReputationMinted` events. Submit a contribution and your event will appear in real time.
-
-Every score-result page on `/submit` includes 5 click-through links to Solana Explorer (submit tx, verify tx, mint tx, release tx, contribution PDA) so anyone can verify on-chain authenticity in seconds.
-
----
-
-## Demo flow (end-to-end on devnet)
-
-1. **Connect Phantom or Solflare** on Solana devnet. (Wallet error banner shows actionable hints if the connect fails.)
-2. **Submit a contribution** — project ID, type, IPFS hash, description. Phantom prompts you to sign a real `submit_contribution` transaction; the contribution PDA gets created on devnet.
-3. **AI scorer** at `/api/score` prompts Claude Sonnet 4.6 with the rubric + your metadata. Claude returns `{score, reasoning, approved}` as structured JSON.
-4. **Oracle settles on-chain:** signs `verify_contribution(score, reasoning_hash)` writing the score to chain, then `mint_reputation` minting `score` REP tokens to your wallet, then `release_milestone` paying out SOL from the project's escrow (if one exists).
-5. **Dashboard** reads your on-chain Token-2022 ATA balance + your contribution history (via `getProgramAccounts` decoded by the IDL).
-6. **Pool screen** lists every active project escrow with real `total_funded` / `total_released` numbers and click-through Explorer links.
-
-All five transactions appear on Solana Explorer with the same wallet's signature. The judge can trace every claim end-to-end.
-
----
-
-## What's real vs. mocked
-
-| Layer | State |
-|---|---|
-| Anchor program (deployed to devnet) | ✅ real — 7 instructions, 4 accounts, 6 events |
-| `submit_contribution` from browser | ✅ real Phantom-signed tx |
-| Claude scoring at `/api/score` | ✅ real Sonnet 4.6 with prompt caching |
-| `verify_contribution` + `mint_reputation` settlement | ✅ real, oracle-signed in the API route |
-| `create_project_escrow` + `fund_project_escrow` + `release_milestone` | ✅ real, fired automatically when a project escrow exists |
-| Dashboard REP balance | ✅ real on-chain Token-2022 ATA read |
-| Dashboard contribution history | ✅ real `getProgramAccounts` with memcmp filter |
-| Live activity feed | ✅ real WebSocket subscription to program events |
-| Project list at `/projects` | ⚠️ static demo set in `lib/indie-pool/projects.ts` (any of them can have a real escrow funded) |
-| IPFS file contents | ⚠️ scorer reads description text only; the hash is a tamper-proof bookmark |
-
-Graceful fallbacks: when env vars are missing, the dApp degrades to localStorage + deterministic-formula scoring with clear "settlement mocked" labels in the UI. Never dead-ends.
-
----
-
-## Repo layout
+| Program ID | [`EvgHfdx5xyTNoPnaHwDtySdAtMUYGcMz9nwCiwMLi9sn`](https://explorer.solana.com/address/EvgHfdx5xyTNoPnaHwDtySdAtMUYGcMz9nwCiwMLi9sn?cluster=devnet) |
+| Deployed dApp | see repo description |
+| Network | Solana devnet |
 
 ```
-proof-please/
-├── app/
-│   ├── page.tsx                  Landing with live activity feed
-│   ├── submit/page.tsx           Contribution form + on-chain settlement UI
-│   ├── dashboard/page.tsx        REP balance + history (on-chain reads)
-│   ├── projects/page.tsx         Browse projects + open submit / fund modals
-│   ├── pool/page.tsx             Layer 2 escrows — real aggregates from chain
-│   ├── api/score/route.ts        Claude scorer + oracle settlement
-│   └── providers.tsx             Wallet + connection + error-surface providers
-├── components/
-│   ├── live-feed.tsx             Homepage on-chain activity ticker
-│   ├── fund-escrow-modal.tsx     Create + top up project escrows
-│   ├── submit-slideover.tsx      Per-project submission slide-over
-│   ├── wallet-error-banner.tsx   Translates wallet errors into actionable UI
-│   ├── project-card.tsx          Project cards with live escrow status
-│   └── ...
-├── lib/
-│   ├── indie-pool/
-│   │   ├── client.ts             Anchor + Phantom seam; chain-first w/ localStorage fallback
-│   │   ├── types.ts              UI ↔ on-chain types
-│   │   └── projects.ts           Static project list for the demo
-│   ├── idl/
-│   │   ├── indie_pool.json       IDL committed for Vercel access (target/ is gitignored)
-│   │   └── indie_pool.ts         Generated TS types
-│   └── explorer.ts               URL helpers for Solana Explorer (cluster-aware)
-├── programs/indie-pool/
-│   └── src/lib.rs                Anchor 0.32 program (7 instructions, see below)
-├── scripts/
-│   └── init-oracle.ts            One-shot bootstrap: creates OracleState + REP mint
-├── tests/indie-pool.ts           Mocha + chai end-to-end happy path
-├── STATUS.md                     Living team snapshot (what's real vs mocked)
-├── CLAUDE.md                     Architecture + decisions, read before editing
-└── paper_please_004.docx         Hackathon spec (source of truth, §4 = economic model)
+ Layer 0 ─── register_project           on-chain Project PDA (creator, name, blurb, type)
+ Layer 1 ─── submit → score → mint      non-transferable REP token = soulbound reputation
+ Layer 2 ─── fund_escrow → release       SOL payout gated by the same AI verdict
+                                         ─────────────────────────────────────
+                                         one signal, two effects, all on-chain
 ```
 
 ---
 
-## Anchor program
+## Who it's for
 
-**7 instructions**, all PDA-derived:
+- **Indie game studios** that need contributors but can't afford full-time staff or a manual review pipeline. Fund an escrow once; the AI vets and pays out automatically.
+- **Indie creators** (coders, artists, musicians, writers, testers) who work across projects and want portable proof of past work. REP follows the wallet, not the platform.
+- **Project bounty programs** that want trustless milestone payouts without an admin in the loop.
 
-| Instruction | Caller | Purpose |
+The problem it solves: creative gig workers start from zero on every new project because their past work isn't verifiable on a shared substrate. LinkedIn endorsements are gameable; GitHub stars are partial; portfolio sites lie. **A reputation that can only be earned and never sold gives indie talent a credential the next project can actually trust.**
+
+---
+
+## A walkthrough (what a user does)
+
+1. **A studio registers a project** — `register_project("supercool-rpg", "Supercool RPG", "Looking for procedural dungeon code", "🎨", "code")`. Anyone signs this; first caller wins the slug. A `Project` PDA is created on-chain.
+
+2. **The studio funds the project's escrow** — `create_project_escrow("supercool-rpg", 1.0 SOL, 100_000 lamports/score)`. SOL is locked in a per-project PDA. Payout rate is set: each verified score point pays 100,000 lamports.
+
+3. **A contributor submits work** — their wallet signs `submit_contribution("supercool-rpg", "code", ipfs_hash, "Implemented BSP procedural generator with biome-aware corridor weaving…")`. A `Contribution` PDA opens in `Pending` status.
+
+4. **The AI scorer reads the description and replies** — Claude Sonnet 4.6 evaluates against a 5-dimension rubric (originality, completeness, project relevance, technical quality, community value) and returns `{ score: 82, reasoning: "Specific deliverable…", approved: true }`.
+
+5. **The oracle settles, automatically** — the `/api/score` route signs three transactions back-to-back with the oracle keypair: `verify_contribution` (writes score on-chain), `mint_reputation` (mints 82 REP tokens to the contributor's ATA), `release_milestone` (transfers 82 × 100,000 = 0.0082 SOL from escrow to contributor).
+
+6. **Everything is verifiable on Solana Explorer** — the submit page returns four tx signatures and the contribution PDA address, all click-through. The contributor's dashboard shows their REP balance read straight from the on-chain Token-2022 ATA.
+
+The whole loop is one click for the contributor after the form submit. ~30 seconds from "Submit" to "+82 REP in wallet and +0.0082 SOL in wallet."
+
+---
+
+## How it works (architecture)
+
+Three loosely-coupled pieces. The Anchor program is the only trusted component.
+
+```
+   Browser (Phantom)                          Anchor program (devnet)
+   ────────────────                           ────────────────────────
+        │                                              ▲
+        │ submit_contribution ─────────────────────────┤
+        │ (user-signed)                                │
+        │                                              │ verify + mint + release
+        │ POST /api/score                              │ (oracle-signed)
+        ▼                                              │
+   /api/score (Vercel function)                        │
+   ─────────────────────────                           │
+        │                                              │
+        ├──▶ Claude API (rubric + metadata)            │
+        │                                              │
+        ├──▶ oracle keypair signs ─────────────────────┘
+        │
+        ▼
+   ScoreResponse { score, reasoning, verifyTx, mintTx, releaseTx }
+```
+
+**Trust model in one sentence:** the program enforces that any state change to a `Contribution` or `ProjectEscrow` must be signed by the oracle pubkey stored in `OracleState` at deploy time. That oracle keypair lives as a Vercel secret. Whoever holds it *is* the oracle.
+
+### Anchor program — 8 instructions, 5 accounts
+
+| Instruction | Caller | Effect |
 |---|---|---|
-| `initialize_oracle(oracle_pubkey)` | Admin (one-shot) | Stores oracle pubkey; creates Token-2022 NonTransferable REP mint with PDA authority |
-| `submit_contribution(...)` | Any wallet | Opens a contribution PDA in `Pending` |
-| `verify_contribution(score, hash)` | **Oracle only** | Writes score; flips status to `Verified` / `Rejected` |
-| `mint_reputation()` | Any wallet | Mints `score` REP into contributor's ATA (gated on `Verified && !minted`) |
-| `create_project_escrow(project_id, deposit, rate)` | Any wallet | Creates a per-project SOL escrow PDA |
-| `fund_project_escrow(amount)` | Any wallet | Adds SOL to an existing escrow |
-| `release_milestone()` | **Oracle only** | Pays `score × rate` from escrow PDA to contributor; idempotent via `ReleaseReceipt` PDA |
+| `initialize_oracle(oracle_pubkey)` | admin (one-shot) | Stores oracle pubkey, creates the Token-2022 NonTransferable REP mint with a PDA authority |
+| `register_project(slug, name, blurb, art, type)` | anyone | Opens a `Project` PDA at `[b"project", slug]` |
+| `submit_contribution(...)` | any wallet | Opens a `Contribution` PDA in `Pending` |
+| `verify_contribution(score, reasoning_hash)` | **oracle only** | Writes score, flips status to `Verified` / `Rejected` |
+| `mint_reputation()` | anyone | Mints `score` REP tokens to the contributor's ATA (only when `Verified && !minted`) |
+| `create_project_escrow(slug, deposit, rate)` | any wallet | Opens a per-project SOL escrow PDA. **Requires the Project PDA to exist** — no orphan escrows |
+| `fund_project_escrow(amount)` | any wallet | Adds SOL to an existing escrow |
+| `release_milestone()` | **oracle only** | Transfers `score × rate` lamports from escrow PDA to contributor. Idempotent via `ReleaseReceipt` PDA. |
 
-**Trust model:** the entire system rides on the `has_one = oracle` check on `OracleState`. Anyone holding the oracle keypair can write scores and release SOL. The oracle keypair lives as a Vercel secret (`ORACLE_KEYPAIR_JSON`) and signs every `verify_contribution` and `release_milestone` from the `/api/score` route.
-
-**Events emitted:** `ContributionSubmitted`, `ContributionVerified`, `ReputationMinted`, `EscrowCreated`, `EscrowFunded`, `MilestoneReleased`. The homepage `LiveFeed` component subscribes to the last two for real-time UI.
+Accounts: `OracleState`, `Project`, `Contribution`, `ProjectEscrow`, `ReleaseReceipt`. Events fire on every state transition (`ContributionSubmitted`, `ContributionVerified`, `ReputationMinted`, `EscrowCreated`, `EscrowFunded`, `MilestoneReleased`, `ProjectRegistered`) and the homepage subscribes via WebSocket to render a live activity feed.
 
 ---
 
-## Quick start
+## Verify on-chain in 30 seconds
 
-### 1. Install JS deps and run the frontend
+For judges:
+
+1. The [program](https://explorer.solana.com/address/EvgHfdx5xyTNoPnaHwDtySdAtMUYGcMz9nwCiwMLi9sn?cluster=devnet) is deployed at the address above. Click it on Explorer; you'll see recent transactions.
+2. Every successful submission on `/submit` returns 4 click-through Solana Explorer links (submit · verify · mint · release) plus the contribution PDA. Click any → real devnet tx with the oracle's signature.
+3. `/projects` lists real `Project` accounts. `/pool` lists real `ProjectEscrow` accounts with their live balances. `/dashboard` reads the contributor's Token-2022 ATA balance directly from chain.
+4. Scroll the homepage — the live feed updates in real time as anyone on the app submits a contribution. WebSocket subscription, not polling.
+
+---
+
+## Run it yourself
 
 ```bash
 pnpm install
-pnpm dev                 # → http://localhost:3000
-```
+pnpm dev                          # http://localhost:3000
 
-`.npmrc` pins `node-linker=hoisted` (don't switch back to pnpm's isolated layout — it breaks Turbopack on this machine).
-
-### 2. Install the Solana toolchain
-
-```bash
-# Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-rustup default stable
-
-# Solana CLI (Anza installer, 2.x)
-sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
-
-# Anchor via avm (matches Anchor.toml's pinned 0.32.1)
-cargo install --git https://github.com/coral-xyz/anchor avm --locked
-avm install 0.32.1 && avm use 0.32.1
-```
-
-### 3. Build and deploy the program
-
-```bash
+# Smart contract — only needed if you want to redeploy:
 anchor build
-anchor keys sync               # writes declare_id! into lib.rs + Anchor.toml
-anchor build                   # rebuild with the synced ID
+anchor keys sync                  # writes the program ID into declare_id! + Anchor.toml
+anchor build
 anchor deploy --provider.cluster devnet
-```
 
-### 4. Initialize the oracle (one-shot bootstrap)
-
-```bash
+# One-shot bootstrap (creates OracleState + REP mint + seeds 9 demo projects):
 pnpm init:oracle
+pnpm seed:projects
+
+# Tests against the deployed program:
+anchor test --provider.cluster devnet
 ```
 
-This script:
-1. Generates an oracle keypair (or reuses `./oracle-keypair.json` if present)
-2. Calls `initialize_oracle` to register the oracle pubkey + create the REP mint
-3. Prints the `.env.local` block to paste into Vercel
+### Environment variables
 
-### 5. Configure environment variables
-
-Copy `.env.example` to `.env.local` and fill:
+Copy `.env.example` → `.env.local`. The split:
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...                                  # server-only
-ORACLE_KEYPAIR_JSON=[12,34,...]                               # server-only (from init:oracle output)
-SOLANA_RPC_URL=https://devnet.helius-rpc.com/?api-key=...     # server-only
+# Server-only secrets (do NOT prefix with NEXT_PUBLIC_)
+ANTHROPIC_API_KEY=sk-ant-...
+ORACLE_KEYPAIR_JSON=[12,34,...]                           # from pnpm init:oracle output
+SOLANA_RPC_URL=https://devnet.helius-rpc.com/?api-key=...
 
+# Public (inlined into the client bundle at build time)
 NEXT_PUBLIC_PROGRAM_ID=EvgHfdx5xyTNoPnaHwDtySdAtMUYGcMz9nwCiwMLi9sn
 NEXT_PUBLIC_NETWORK=devnet
 NEXT_PUBLIC_RPC_URL=https://devnet.helius-rpc.com/?api-key=...
 ```
 
-**Only `NEXT_PUBLIC_*` vars reach the browser.** Server secrets stay on the server. The Helius API key in `NEXT_PUBLIC_RPC_URL` is browser-visible by design — fine for a free-tier devnet key, NEVER for paid mainnet.
-
-### 6. Run tests
-
-```bash
-anchor test                                            # local validator
-anchor test --provider.cluster devnet                  # against deployed devnet program
-```
+The Helius API key in `NEXT_PUBLIC_RPC_URL` is browser-visible by design — acceptable for a free-tier devnet key, never for paid mainnet.
 
 ---
 
@@ -196,68 +152,33 @@ anchor test --provider.cluster devnet                  # against deployed devnet
 
 | Layer | Choice |
 |---|---|
-| Frontend | Next.js 16 (App Router, Turbopack), React 19, Tailwind 4 |
-| Wallet | `@solana/wallet-adapter-react` (Wallet Standard auto-discovery — no explicit Phantom/Solflare registration) |
-| Smart contracts | Anchor 0.32 on Solana 2.x, Token-2022 NonTransferable extension |
-| AI scorer | Claude Sonnet 4.6 via `@anthropic-ai/sdk` with prompt-cached rubric, on a Vercel serverless route |
-| RPC | Helius free-tier devnet (recommended) or public `api.devnet.solana.com` |
-| Live feed | WebSocket subscription to program events via `program.addEventListener` |
-| Storage | IPFS hash field (paste-only for MVP) |
-| Deployment | Vercel (frontend + scorer) + Solana devnet (program) |
+| Smart contract | Anchor 0.32, Token-2022 NonTransferable extension, Solana devnet |
+| AI scorer | Claude Sonnet 4.6 via `@anthropic-ai/sdk`, prompt-cached rubric, on a Vercel serverless route |
+| RPC | Helius free-tier devnet (recommended) |
+| Frontend | Next.js 16 App Router, React 19, Tailwind 4, Turbopack |
+| Wallet | `@solana/wallet-adapter-react` with Wallet Standard auto-discovery (no explicit Phantom/Solflare registration) |
+| Live feed | Browser WebSocket subscription via `program.addEventListener` |
 
 ---
 
-## Economic model
+## Design decisions worth knowing
 
-Proof, please! is built on a deliberate two-layer separation that keeps reputation **non-financial** and rewards **stablecoin-denominated**. This is informed by the failure modes of 2025's gaming-token economy — over 90% of token launches that year lost their initial value. Each design decision below dodges a specific failure mode (full rationale in `paper_please_004.docx` §4).
+- **Soulbound (non-transferable) reputation by construction.** Token-2022 `NonTransferable` mint extension means the chain itself rejects transfers. Reputation can't be bought, sold, or whale-captured.
+- **AI scoring instead of committee voting.** Eliminates governance bottlenecks. The rubric is prompt-cached for consistency across submissions; the reasoning is sha256-hashed and stored on-chain so the AI's verdict is permanent.
+- **One AI verdict drives both layers.** The same `verify_contribution` call that mints REP also gates the escrow payout. No separate review for "did you earn money" vs "did you earn reputation."
+- **No native platform token.** SOL is the only liquid asset; REP is the only signal. Sidesteps the 2025 gaming-token failure mode (90% of launches lost initial value to dump pressure).
+- **Strict Project → Escrow coupling.** You can't fund an escrow for a project that hasn't been registered on-chain. Every fundable slug corresponds to a verifiable on-chain entity.
 
-### Two layers
-
-| Layer | Asset | Transferable? | Purpose |
-|---|---|---|---|
-| **Layer 1 — Reputation** | REP (Token-2022, `NonTransferable`) | No (soulbound) | Verifiable creative identity & merit score; cumulative across projects |
-| **Layer 2 — Rewards** | SOL (in escrow PDA, milestone-gated) | Yes | Compensation for verified contributions; trustless on-chain release |
-| **Phase 2 — Governance** | TBD fungible token | Yes (with vesting) | Platform staking/governance; deferred until proven escrow demand |
-
-No native platform token launches at MVP. SOL serves as the liquid economic rail; REP serves as the non-financial signal.
-
-### Failure modes this dodges
-
-| Failure mode (2025) | How we avoid it |
-|---|---|
-| Pump-and-dump tokens | No native token at launch — SOL is the only liquid asset on the platform |
-| Plutocratic governance (whale capture) | REP is non-transferable; one contributor, one voice |
-| DAO overhead (slow committees) | AI scoring replaces committee voting for small teams |
-| Pay-to-play access | Reputation is earned via verified work (score ≥ 60), never bought |
-
----
-
-## How to verify on-chain (in 30 seconds)
-
-For judges or anyone curious:
-
-1. **Program is deployed:** [`EvgHfdx5xyTNoPnaHwDtySdAtMUYGcMz9nwCiwMLi9sn`](https://explorer.solana.com/address/EvgHfdx5xyTNoPnaHwDtySdAtMUYGcMz9nwCiwMLi9sn?cluster=devnet) shows recent transactions on devnet.
-2. **REP mint is real Token-2022 with NonTransferable:** the mint PDA at seed `[b"rep_mint"]` shows the `NonTransferable` extension in its account data.
-3. **Each submission produces 5 inspectable artifacts:** submit tx, verify tx, mint tx, release tx (if escrow exists), and the contribution PDA itself. All linked from `/submit`'s success state.
-4. **Live feed proves freshness:** the homepage ticker subscribes via WebSocket — if your submission appears in the feed within 1-2s, the chain is real.
+For the full architecture rationale, see [`CLAUDE.md`](./CLAUDE.md). For a current snapshot of what's real vs mocked, see [`STATUS.md`](./STATUS.md).
 
 ---
 
 ## Roadmap (post-hackathon)
 
-In order of value:
-
-1. **Project registration on-chain** — replace the static `lib/indie-pool/projects.ts` with a real `Project` account type registered by creators.
-2. **Real IPFS file scoring** — fetch the file at the hash; branch by type (compile + tests for code, CLIP for images, audio analysis for music).
-3. **Multi-oracle / threshold-signed scoring** — replace single oracle with M-of-N signature so no party can rubber-stamp.
-4. **Mainnet deploy** — ~2.15 SOL of real SOL for program rent. Worthwhile only after Phase 1 product validation.
-5. **ZK-proof scoring** — research project; let the model produce a verifiable proof of its scoring decision.
-
----
-
-## Status
-
-This is a hackathon MVP. The full architecture and locked design decisions are in [`CLAUDE.md`](./CLAUDE.md); the current snapshot of what's real vs mocked lives in [`STATUS.md`](./STATUS.md). Original spec: `paper_please_004.docx`.
+1. **Real IPFS file scoring** — fetch the file at the hash; branch by type (compile + tests for code, CLIP for images, audio analysis for music).
+2. **Multi-oracle / threshold-signed scoring** — replace single oracle keypair with M-of-N so no party can rubber-stamp.
+3. **Mainnet deploy** — ~2.15 SOL real for program rent; only after Phase 1 product validation.
+4. **ZK-proof scoring** — research project: let the model produce a verifiable proof of its scoring decision.
 
 ---
 
