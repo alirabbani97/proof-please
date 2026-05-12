@@ -2,7 +2,6 @@
 
 **AI-verified, soulbound reputation infrastructure for creators on Solana.**
 
-> Hackathon MVP · May 2026 · by Brutales XYZ
 > Codename: **Indie Pool**
 
 Submit creative work — code, art, music, 3D, writing — get it AI-scored by Claude, and earn non-transferable on-chain reputation as Soulbound Tokens. When a project funds an escrow, verified contributions also unlock real SOL payouts. **Two layers, one signal.**
