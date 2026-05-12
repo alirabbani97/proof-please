@@ -270,6 +270,28 @@ export async function POST(
   let releaseAmountLamports: number | undefined;
   const oracleKp = loadOracleKeypair();
   const programId = process.env.NEXT_PUBLIC_PROGRAM_ID;
+
+  // Surface why settlement was skipped so future failures aren't silent.
+  // Without these, a null oracleKp (bad ORACLE_KEYPAIR_JSON) or missing
+  // program ID causes the entire on-chain block below to be a no-op with
+  // zero log output — the response just looks "successful" while nothing
+  // hits chain.
+  if (!oracleKp) {
+    console.warn(
+      "[scorer] settlement SKIPPED: ORACLE_KEYPAIR_JSON missing or failed to parse",
+      {
+        rawSet: Boolean(process.env.ORACLE_KEYPAIR_JSON),
+        rawLength: process.env.ORACLE_KEYPAIR_JSON?.length ?? 0,
+      },
+    );
+  }
+  if (!programId || programId === "11111111111111111111111111111111") {
+    console.warn(
+      "[scorer] settlement SKIPPED: NEXT_PUBLIC_PROGRAM_ID missing or placeholder",
+      { value: programId },
+    );
+  }
+
   if (
     oracleKp &&
     programId &&
